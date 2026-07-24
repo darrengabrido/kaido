@@ -1,0 +1,65 @@
+name: EbikeApp
+options:
+  bundleIdPrefix: com.darren
+  deploymentTarget:
+    iOS: "26.0"
+  createIntermediateGroups: true
+
+configFiles:
+  Debug: Config/Shared.xcconfig
+  Release: Config/Shared.xcconfig
+
+packages:
+  MapboxMaps:
+    url: https://github.com/mapbox/mapbox-maps-ios
+    majorVersion: 11.0.0
+  MapboxNavigation:
+    url: https://github.com/mapbox/mapbox-navigation-ios.git
+    majorVersion: 3.1.0
+
+targets:
+  EbikeApp:
+    type: application
+    platform: iOS
+    deploymentTarget: "26.0"
+    sources:
+      - path: EbikeApp
+    info:
+      path: EbikeApp/Info.plist
+      properties:
+        UILaunchScreen: {}
+        MBXAccessToken: "$(MAPBOX_ACCESS_TOKEN)"
+        NSLocationWhenInUseUsageDescription: "Ebike needs your location to show you on the map and provide turn-by-turn navigation."
+        NSLocationAlwaysAndWhenInUseUsageDescription: "Ebike needs your location to track your ride and keep navigating while your phone is locked or in your pocket."
+        NSBluetoothAlwaysUsageDescription: "Ebike connects to your bike over Bluetooth to show live speed and battery data."
+        UIBackgroundModes:
+          - location
+          - bluetooth-central
+          - remote-notification
+          # Required by MapboxNavigationCore's RouteVoiceController — it raises a
+          # fatal error at init if "audio" is missing, so navigation cannot start without it.
+          - audio
+    entitlements:
+      path: EbikeApp/EbikeApp.entitlements
+      properties:
+        com.apple.developer.icloud-container-identifiers:
+          - iCloud.com.darren.ebike-app
+        com.apple.developer.icloud-services:
+          - CloudKit
+        aps-environment: development
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.darren.ebike-app
+        PRODUCT_NAME: EbikeApp
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: UMS9MYBSZK
+        TARGETED_DEVICE_FAMILY: "1"
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+    dependencies:
+      - package: MapboxMaps
+      - package: MapboxNavigation
+        product: MapboxNavigationCore
+      - package: MapboxNavigation
+        product: MapboxNavigationUIKit

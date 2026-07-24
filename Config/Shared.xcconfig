@@ -1,0 +1,4 @@
+#include "Secrets.xcconfig"
+
+IPHONEOS_DEPLOYMENT_TARGET = 26.0
+SWIFT_VERSION = 5.0
