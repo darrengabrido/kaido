@@ -6,8 +6,9 @@ struct ContentView: View {
 
     var body: some View {
         TabView {
+            // No .ignoresSafeArea() here — MapboxMapView applies it to the map itself so the
+            // tiles run full-bleed, while its overlay controls stay inside the safe area.
             MapboxMapView(locationManager: locationManager)
-                .ignoresSafeArea()
                 .tabItem {
                     Label("Map", systemImage: "map")
                 }

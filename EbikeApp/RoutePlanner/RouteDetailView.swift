@@ -63,7 +63,7 @@ struct RouteDetailView: View {
 
                 Button {
                     Task {
-                        await navigationViewModel.startNavigation(waypointCoordinates: coordinates)
+                        await navigationViewModel.requestRoutes(waypointCoordinates: coordinates)
                         if navigationViewModel.navigationRoutes != nil {
                             isPresentingNavigation = true
                         }

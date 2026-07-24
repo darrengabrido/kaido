@@ -65,9 +65,38 @@ struct MapboxMapView: View {
                     }
                     .circleEmissiveStrength(1)
                 }
+
+                // Draw alternates first (dim, thin) so the main/selected route always paints on top.
+                PolylineAnnotationGroup(
+                    navigationViewModel.routeOptions.filter { !$0.isMain && $0.coordinates.count > 1 }
+                ) { option in
+                    PolylineAnnotation(lineCoordinates: option.coordinates)
+                        .lineColor(UIColor(Color.paceBlue))
+                        .lineWidth(3)
+                }
+                .lineOpacity(0.55)
+
+                PolylineAnnotationGroup(
+                    navigationViewModel.routeOptions.filter { $0.isMain && $0.coordinates.count > 1 }
+                ) { option in
+                    PolylineAnnotation(lineCoordinates: option.coordinates)
+                        .lineColor(UIColor(Color.routeTealOnMap))
+                        .lineWidth(5)
+                }
+                .lineEmissiveStrength(1)
             }
             .mapStyle(.ebikeNight)
-            .ornamentOptions(OrnamentOptions(scaleBar: ScaleBarViewOptions(visibility: .hidden)))
+            .ornamentOptions(OrnamentOptions(
+                scaleBar: ScaleBarViewOptions(visibility: .hidden),
+                // The compass defaults to .topTrailing with an 8pt margin, which puts it
+                // underneath the search bar. Ornament margins are measured from the safe-area
+                // top (~59pt), so y: 60 drops it clear of the search bar; .topLeading keeps it
+                // off the right edge where the legend and bike-lane toggle live.
+                compass: CompassViewOptions(
+                    position: .topLeading,
+                    margins: CGPoint(x: 16, y: 60)
+                )
+            ))
             .ignoresSafeArea()
 
             VStack(spacing: 8) {
@@ -97,36 +126,39 @@ struct MapboxMapView: View {
 
                 Spacer()
 
+                // Bike lanes toggle lives in the layout flow rather than as a free-floating
+                // corner overlay, so it is pushed up by the destination card instead of
+                // covering its "Start Navigation" button.
+                Button {
+                    showBikeLanes.toggle()
+                } label: {
+                    Image(systemName: "bicycle")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundStyle(showBikeLanes ? Color.routeTeal : Color.secondary)
+                        .frame(width: 44, height: 44)
+                }
+                .glassEffect(.regular, in: Circle())
+                .frame(maxWidth: .infinity, alignment: .trailing)
+
                 if let destination = searchViewModel.selectedDestination {
                     destinationCard(destination)
                 }
             }
-            .padding(.top, 60)
+            .padding(.top, 8)
             .padding(.horizontal, 16)
-            .padding(.bottom, 90)
+            .padding(.bottom, 8)
 
             // Bike lanes legend — top-right, tucked under the search bar.
             // Hidden while search results are showing so it doesn't collide with the dropdown.
+            // Top inset = search bar top padding (8) + its height (~44) + an 8pt gap; this
+            // matches the compass's safe-area-relative margin on the opposite side.
             if showBikeLanes && searchViewModel.results.isEmpty {
                 BikeLaneLegend()
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                    .padding(.top, 118)
+                    .padding(.top, 60)
                     .padding(.trailing, 16)
             }
 
-            // Bike lanes toggle — bottom-right
-            Button {
-                showBikeLanes.toggle()
-            } label: {
-                Image(systemName: "bicycle")
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundStyle(showBikeLanes ? Color.routeTeal : Color.secondary)
-                    .frame(width: 44, height: 44)
-            }
-            .glassEffect(.regular, in: Circle())
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-            .padding(.trailing, 16)
-            .padding(.bottom, 100)
         }
         .onChange(of: locationManager.currentLocation?.coordinate.latitude) { _, _ in
             searchViewModel.proximity = locationManager.currentLocation?.coordinate
@@ -256,15 +288,26 @@ struct MapboxMapView: View {
                     .foregroundStyle(.red)
             }
 
+            if navigationViewModel.navigationRoutes != nil {
+                routeOptionsList
+            }
+
             Button {
-                startNavigation(to: destination)
+                if navigationViewModel.navigationRoutes == nil {
+                    fetchRoutes(to: destination)
+                } else {
+                    isPresentingNavigation = true
+                }
             } label: {
                 if navigationViewModel.isRequestingRoute {
                     ProgressView()
                         .frame(maxWidth: .infinity)
                 } else {
-                    Label("Start Navigation", systemImage: "location.north.line.fill")
-                        .frame(maxWidth: .infinity)
+                    Label(
+                        navigationViewModel.navigationRoutes == nil ? "Get Routes" : "Start Navigation",
+                        systemImage: "location.north.line.fill"
+                    )
+                    .frame(maxWidth: .infinity)
                 }
             }
             .buttonStyle(.glassProminent)
@@ -273,6 +316,56 @@ struct MapboxMapView: View {
         }
         .padding()
         .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 20))
+    }
+
+    /// Recommended routes for the currently selected destination — tap one to make it the
+    /// route "Start Navigation" will launch. Mirrors what's drawn on the map: the picked
+    /// route is teal and full-strength, the rest are dim paceBlue.
+    private var routeOptionsList: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(navigationViewModel.routeOptions) { option in
+                Button {
+                    Task { await navigationViewModel.selectRoute(option) }
+                } label: {
+                    HStack(spacing: 8) {
+                        Circle()
+                            .fill(option.isMain ? Color.routeTeal : Color.paceBlue)
+                            .frame(width: 8, height: 8)
+                        Text(formattedDuration(option.expectedTravelTime))
+                            .font(.subheadline.weight(option.isMain ? .semibold : .regular))
+                            .foregroundStyle(option.isMain ? Color.primary : Color.secondary)
+                        Text("·")
+                            .foregroundStyle(.secondary)
+                        Text(formattedDistance(option.distanceMeters))
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        if option.isMain {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(Color.routeTeal)
+                        }
+                    }
+                    .padding(.vertical, 6)
+                    .padding(.horizontal, 10)
+                    .background(option.isMain ? Color.routeTeal.opacity(0.14) : Color.clear)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private func formattedDuration(_ seconds: TimeInterval) -> String {
+        let formatter = DateComponentsFormatter()
+        formatter.allowedUnits = seconds >= 3600 ? [.hour, .minute] : [.minute]
+        formatter.unitsStyle = .abbreviated
+        return formatter.string(from: seconds) ?? ""
+    }
+
+    private func formattedDistance(_ meters: Double) -> String {
+        Measurement(value: meters, unit: UnitLength.meters)
+            .formatted(.measurement(width: .abbreviated, usage: .road))
     }
 
     private func selectDestination(_ result: SearchResult) {
@@ -285,23 +378,21 @@ struct MapboxMapView: View {
 
     private func clearDestination() {
         searchViewModel.clearSelection()
+        navigationViewModel.clear()
         withAnimation {
             viewport = .followPuck(zoom: 15, bearing: .heading, pitch: 0)
         }
     }
 
-    private func startNavigation(to destination: SearchResult) {
+    private func fetchRoutes(to destination: SearchResult) {
         guard let currentCoordinate = locationManager.currentLocation?.coordinate else {
             navigationViewModel.requestError = "Waiting for your location…"
             return
         }
         Task {
-            await navigationViewModel.startNavigation(
+            await navigationViewModel.requestRoutes(
                 waypointCoordinates: [currentCoordinate, destination.coordinate]
             )
-            if navigationViewModel.navigationRoutes != nil {
-                isPresentingNavigation = true
-            }
         }
     }
 }
