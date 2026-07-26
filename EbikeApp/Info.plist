@@ -21,11 +21,11 @@
 	<key>MBXAccessToken</key>
 	<string>$(MAPBOX_ACCESS_TOKEN)</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>Ebike connects to your bike over Bluetooth to show live speed and battery data.</string>
+	<string>Vector connects to your bike over Bluetooth to show live speed and battery data.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>Ebike needs your location to track your ride and keep navigating while your phone is locked or in your pocket.</string>
+	<string>Vector needs your location to track your ride and keep navigating while your phone is locked or in your pocket.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Ebike needs your location to show you on the map and provide turn-by-turn navigation.</string>
+	<string>Vector needs your location to show you on the map and provide turn-by-turn navigation.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>location</string>

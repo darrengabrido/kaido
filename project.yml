@@ -29,9 +29,9 @@ targets:
       properties:
         UILaunchScreen: {}
         MBXAccessToken: "$(MAPBOX_ACCESS_TOKEN)"
-        NSLocationWhenInUseUsageDescription: "Ebike needs your location to show you on the map and provide turn-by-turn navigation."
-        NSLocationAlwaysAndWhenInUseUsageDescription: "Ebike needs your location to track your ride and keep navigating while your phone is locked or in your pocket."
-        NSBluetoothAlwaysUsageDescription: "Ebike connects to your bike over Bluetooth to show live speed and battery data."
+        NSLocationWhenInUseUsageDescription: "Vector needs your location to show you on the map and provide turn-by-turn navigation."
+        NSLocationAlwaysAndWhenInUseUsageDescription: "Vector needs your location to track your ride and keep navigating while your phone is locked or in your pocket."
+        NSBluetoothAlwaysUsageDescription: "Vector connects to your bike over Bluetooth to show live speed and battery data."
         UIBackgroundModes:
           - location
           - bluetooth-central
@@ -43,14 +43,14 @@ targets:
       path: EbikeApp/EbikeApp.entitlements
       properties:
         com.apple.developer.icloud-container-identifiers:
-          - iCloud.com.darren.ebike-app
+          - iCloud.com.darren.vector
         com.apple.developer.icloud-services:
           - CloudKit
         aps-environment: development
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.darren.ebike-app
-        PRODUCT_NAME: EbikeApp
+        PRODUCT_BUNDLE_IDENTIFIER: com.darren.vector
+        PRODUCT_NAME: Vector
         MARKETING_VERSION: "0.1.0"
         CURRENT_PROJECT_VERSION: "1"
         CODE_SIGN_STYLE: Automatic
