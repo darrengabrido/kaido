@@ -10,12 +10,14 @@ An iOS navigation app for ebike riders — turn-by-turn routing, bike lane visua
 - **Custom route planning** — draw a route by tapping waypoints on the map, save it, and revisit it later.
 - **Ride history** — routes and past rides persist locally and sync across devices via CloudKit.
 - **Live bike telemetry** over Bluetooth LE — speed, cadence, and battery, read from standard Cycling Speed & Cadence and Battery GATT profiles and shown in a heads-up display during navigation.
+- **Optional sign-in** — Sign in with Apple or email/password via Supabase Auth, or skip it entirely and ride as a guest. Guest mode is remembered across launches, and you can sign in later from the Bike tab.
 
 ## Tech stack
 
 - SwiftUI, targeting iOS 26+
 - [Mapbox Maps SDK](https://github.com/mapbox/mapbox-maps-ios) (v11) and [Mapbox Navigation SDK](https://github.com/mapbox/mapbox-navigation-ios) (v3)
 - SwiftData with CloudKit sync
+- [Supabase Auth](https://github.com/supabase/supabase-swift) (v2) — Sign in with Apple + email/password
 - Core Bluetooth (CBCentralManager/CBPeripheral)
 - [XcodeGen](https://github.com/yonaskolb/XcodeGen) — the `.xcodeproj` is generated from `project.yml` and is not checked into git
 
@@ -23,6 +25,7 @@ An iOS navigation app for ebike riders — turn-by-turn routing, bike lane visua
 
 ```
 Vector/
+├── Auth/            Sign-in screen, session state, Supabase client setup
 ├── Bluetooth/       BLE manager, telemetry model, bike-connection UI
 ├── HUD/             In-navigation heads-up display
 ├── Map/             Main map view, search, bike lane layers/legend
@@ -40,15 +43,16 @@ Vector/
 - Xcode 26+
 - [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`)
 - A [Mapbox](https://www.mapbox.com/) account and public access token
+- Optional: a [Supabase](https://supabase.com/) project, if you want sign-in enabled
 
 ### Setup
 
 1. Clone the repo.
-2. Copy the secrets template and add your Mapbox token:
+2. Copy the secrets template and fill it in:
    ```
    cp Config/Secrets.xcconfig.example Config/Secrets.xcconfig
    ```
-   then edit `Config/Secrets.xcconfig` and paste in your token.
+   Add your Mapbox token. Supabase credentials are optional — leave them blank and the app still builds and runs, with sign-in disabled and guest mode always available.
 3. Generate the Xcode project:
    ```
    xcodegen generate
@@ -57,6 +61,16 @@ Vector/
 
 To regenerate the project after changing `project.yml` (targets, permissions, entitlements, etc.), just re-run `xcodegen generate`.
 
+### Enabling sign-in
+
+1. **Supabase project** — create one, then copy the project host (e.g. `abcdefgh.supabase.co`, without the `https://`) and the `anon`/`public` key from Project Settings → API into `Config/Secrets.xcconfig`. Enable the Email provider under Authentication → Providers.
+2. **Apple Developer portal** — Identifiers → App ID `com.darren.vector` → enable the **Sign In with Apple** capability → Save.
+3. **Supabase Apple provider** — Authentication → Providers → Apple → enable it and set **Client IDs** to `com.darren.vector`.
+
+Because Vector uses Apple's *native* sign-in (an on-device ID token exchanged via `signInWithIdToken`), the Services ID, `.p8` secret key, and OAuth callback URL are **not** required — those are only for Sign in with Apple on the web.
+
+Sign in with Apple only works end-to-end on a device or simulator signed into an Apple Account.
+
 ## Status
 
-Actively in development. Turn-by-turn navigation, bike lane visualization, destination search, route planning, and the BLE scaffold are all working. Live BLE telemetry has not yet been verified against real bike hardware.
+Actively in development. Turn-by-turn navigation, bike lane visualization, destination search, route planning, optional sign-in, and the BLE scaffold are all working. Live BLE telemetry has not yet been verified against real bike hardware, and Sign in with Apple has not yet been verified end-to-end against a configured Supabase project.

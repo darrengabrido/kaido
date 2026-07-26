@@ -3,12 +3,14 @@ import SwiftData
 
 struct BikeConnectionView: View {
     @Environment(BikeBLEManager.self) private var bleManager
+    @Environment(AuthState.self) private var authState
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \BikeProfile.lastConnectedAt, order: .reverse) private var savedProfiles: [BikeProfile]
 
     var body: some View {
         NavigationStack {
             List {
+                accountSection
                 statusSection
                 if bleManager.telemetry.isConnected {
                     telemetrySection
@@ -25,6 +27,30 @@ struct BikeConnectionView: View {
     }
 
     // MARK: - Sections
+
+    private var accountSection: some View {
+        Section {
+            HStack {
+                Image(systemName: authState.isAuthenticated ? "person.crop.circle.fill" : "person.crop.circle")
+                    .foregroundStyle(authState.isAuthenticated ? Color.routeTeal : .secondary)
+                Text(authState.user?.email ?? "Browsing as Guest")
+                    .lineLimit(1)
+                Spacer()
+                if authState.isAuthenticated {
+                    Button("Sign Out", role: .destructive) {
+                        Task { try? await authState.signOut() }
+                    }
+                } else {
+                    Button("Sign In") {
+                        authState.exitGuestMode()
+                    }
+                    .tint(.routeTeal)
+                }
+            }
+        } header: {
+            Text("Account")
+        }
+    }
 
     private var statusSection: some View {
         Section {
