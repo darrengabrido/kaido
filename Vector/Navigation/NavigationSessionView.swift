@@ -9,7 +9,7 @@ struct NavigationSessionView: UIViewControllerRepresentable {
     func makeUIViewController(context: Context) -> NavigationViewController {
         let provider = VectorNavigationProvider.shared
         let nightStyle = StandardNightStyle()
-        nightStyle.tintColor = UIColor(Color.routeTeal)
+        nightStyle.tintColor = UIColor(Color.vectorViolet)
         let navigationOptions = NavigationOptions(
             mapboxNavigation: provider.mapboxNavigation,
             voiceController: provider.routeVoiceController,

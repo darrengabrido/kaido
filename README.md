@@ -1,6 +1,6 @@
 # Vector
 
-An iOS navigation app for ebike riders — turn-by-turn routing, bike lane visualization, custom route planning, and live BLE telemetry from your bike, all in one place.
+An intelligent ride companion for iOS — turn-by-turn routing, bike lane visualization, custom route planning, and live BLE telemetry from your bike, all in one place.
 
 ## Features
 

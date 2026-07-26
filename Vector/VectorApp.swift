@@ -9,7 +9,7 @@ struct VectorApp: App {
         WindowGroup {
             RootView()
                 .preferredColorScheme(.dark)
-                .tint(.routeTeal)
+                .tint(.vectorViolet)
                 .environment(bleManager)
                 .environment(authState)
         }

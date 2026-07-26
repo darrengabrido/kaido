@@ -52,7 +52,7 @@ struct RoutesListView: View {
                     } label: {
                         Label("New Route", systemImage: "plus")
                     }
-                    .tint(.goGreen)
+                    .tint(.vectorViolet)
                 }
             }
             .fullScreenCover(isPresented: $isShowingPlanner) {

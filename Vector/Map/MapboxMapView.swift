@@ -311,7 +311,7 @@ struct MapboxMapView: View {
                 }
             }
             .buttonStyle(.glassProminent)
-            .tint(.goGreen)
+            .tint(.vectorViolet)
             .disabled(navigationViewModel.isRequestingRoute)
         }
         .padding()

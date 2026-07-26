@@ -40,6 +40,12 @@ final class AuthViewModel {
         email.contains("@") && email.count > 3 && password.count >= 6
     }
 
+    /// Clears transient state before showing the email form for a fresh attempt.
+    func reset() {
+        errorMessage = nil
+        pendingEmailConfirmation = false
+    }
+
     func submit() async {
         guard let client = VectorSupabaseClient.shared else {
             errorMessage = Self.notConfiguredMessage

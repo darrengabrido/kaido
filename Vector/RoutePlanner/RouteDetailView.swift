@@ -78,7 +78,7 @@ struct RouteDetailView: View {
                     }
                 }
                 .buttonStyle(.glassProminent)
-                .tint(.goGreen)
+                .tint(.vectorViolet)
                 .disabled(navigationViewModel.isRequestingRoute || coordinates.count < 2)
             }
             .frame(maxWidth: .infinity, alignment: .leading)

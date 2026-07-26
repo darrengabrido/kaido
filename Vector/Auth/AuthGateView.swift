@@ -1,153 +1,103 @@
 import SwiftUI
 import AuthenticationServices
 
+/// Landing / hero screen. Leads with brand identity and the two lowest-friction paths
+/// (Sign in with Apple, Continue as guest), and reveals email/password on a second step.
 struct AuthGateView: View {
     @Environment(AuthState.self) private var authState
     @State private var viewModel = AuthViewModel()
-    @FocusState private var focusedField: Field?
-
-    private enum Field {
-        case email, password
-    }
+    @State private var showEmailAuth = false
+    @State private var appear = false
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 24) {
-                header
-                credentialsCard
-                divider
-                appleButton
-                guestButton
+        ZStack {
+            AuroraBackground()
+
+            VStack(spacing: 0) {
+                Spacer(minLength: 0)
+                hero
+                Spacer(minLength: 0)
+                Spacer(minLength: 0)
+                actions
             }
-            .padding(.horizontal, 24)
-            .padding(.vertical, 40)
+            .padding(.horizontal, 28)
+            .padding(.bottom, 28)
+            .padding(.top, 60)
         }
-        .scrollDismissesKeyboard(.interactively)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .preferredColorScheme(.dark)
+        .sheet(isPresented: $showEmailAuth) {
+            EmailAuthView(viewModel: viewModel)
+        }
+        .onAppear {
+            withAnimation(.easeOut(duration: 0.9)) { appear = true }
+        }
     }
 
-    private var header: some View {
-        VStack(spacing: 10) {
+    // MARK: Hero
+
+    private var hero: some View {
+        VStack(spacing: 22) {
             Image(systemName: "bicycle")
-                .font(.system(size: 44, weight: .medium))
-                .foregroundStyle(Color.routeTeal)
-            Text("Vector")
-                .font(.largeTitle.bold())
-            Text("Ride navigation built for ebikes")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .font(.system(size: 46, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 104, height: 104)
+                .glassEffect(.regular, in: .rect(cornerRadius: 30))
+                .shadow(color: .vectorViolet.opacity(0.45), radius: 24, y: 8)
+                .scaleEffect(appear ? 1 : 0.85)
+
+            VStack(spacing: 10) {
+                Text("Vector")
+                    .font(.system(size: 56, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+
+                Text("Your intelligent ride companion")
+                    .font(.headline)
+                    .fontWeight(.medium)
+                    .foregroundStyle(.white.opacity(0.72))
+            }
         }
-        .padding(.bottom, 8)
+        .opacity(appear ? 1 : 0)
+        .offset(y: appear ? 0 : 16)
     }
 
-    private var credentialsCard: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Picker("Mode", selection: $viewModel.mode) {
-                ForEach(AuthViewModel.Mode.allCases, id: \.self) { mode in
-                    Text(mode.title).tag(mode)
-                }
-            }
-            .pickerStyle(.segmented)
+    // MARK: Actions
 
-            field(icon: "envelope") {
-                TextField("Email", text: $viewModel.email)
-                    .textContentType(.emailAddress)
-                    .keyboardType(.emailAddress)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .focused($focusedField, equals: .email)
-                    .submitLabel(.next)
-                    .onSubmit { focusedField = .password }
+    private var actions: some View {
+        VStack(spacing: 12) {
+            SignInWithAppleButton(.continue) { request in
+                request.requestedScopes = [.email, .fullName]
+            } onCompletion: { result in
+                handleAppleCompletion(result)
             }
-
-            field(icon: "lock") {
-                SecureField("Password", text: $viewModel.password)
-                    .textContentType(viewModel.mode == .signUp ? .newPassword : .password)
-                    .focused($focusedField, equals: .password)
-                    .submitLabel(.go)
-                    .onSubmit { submit() }
-            }
-
-            if let errorMessage = viewModel.errorMessage {
-                Text(errorMessage)
-                    .font(.caption)
-                    .foregroundStyle(.red)
-            }
-
-            if viewModel.pendingEmailConfirmation {
-                Text("Check your email to confirm your account, then sign in.")
-                    .font(.caption)
-                    .foregroundStyle(Color.routeTeal)
-            }
+            .signInWithAppleButtonStyle(.white)
+            .frame(height: 54)
+            .clipShape(RoundedRectangle(cornerRadius: 18))
+            .disabled(viewModel.isLoading)
 
             Button {
-                submit()
+                viewModel.reset()
+                showEmailAuth = true
             } label: {
-                if viewModel.isLoading {
-                    ProgressView()
-                        .frame(maxWidth: .infinity)
-                } else {
-                    Text(viewModel.mode.actionTitle)
-                        .frame(maxWidth: .infinity)
-                }
+                Label("Continue with email", systemImage: "envelope.fill")
+                    .font(.headline)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 54)
             }
-            .buttonStyle(.glassProminent)
-            .tint(.goGreen)
-            .disabled(viewModel.isLoading || !viewModel.isValid)
+            .buttonStyle(.glass)
+            .foregroundStyle(.white)
+
+            Button("Continue as guest") {
+                authState.continueAsGuest()
+            }
+            .font(.subheadline.weight(.medium))
+            .foregroundStyle(.white.opacity(0.7))
+            .padding(.top, 6)
         }
-        .padding()
-        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 20))
+        .opacity(appear ? 1 : 0)
+        .offset(y: appear ? 0 : 24)
     }
 
-    private func field<Content: View>(
-        icon: String,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: icon)
-                .foregroundStyle(.secondary)
-                .frame(width: 20)
-            content()
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 16))
-    }
-
-    private var divider: some View {
-        HStack(spacing: 12) {
-            Rectangle().fill(.secondary.opacity(0.3)).frame(height: 1)
-            Text("or")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Rectangle().fill(.secondary.opacity(0.3)).frame(height: 1)
-        }
-    }
-
-    private var appleButton: some View {
-        SignInWithAppleButton(.continue) { request in
-            request.requestedScopes = [.email, .fullName]
-        } onCompletion: { result in
-            handleAppleCompletion(result)
-        }
-        .signInWithAppleButtonStyle(.white)
-        .frame(height: 50)
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-        .disabled(viewModel.isLoading)
-    }
-
-    private var guestButton: some View {
-        Button("Continue as Guest") {
-            authState.continueAsGuest()
-        }
-        .font(.subheadline)
-        .foregroundStyle(.secondary)
-    }
-
-    private func submit() {
-        focusedField = nil
-        Task { await viewModel.submit() }
-    }
+    // MARK: Apple sign-in
 
     private func handleAppleCompletion(_ result: Result<ASAuthorization, any Error>) {
         switch result {
@@ -166,8 +116,48 @@ struct AuthGateView: View {
     }
 }
 
+/// A slow-drifting mesh gradient blending indigo-violet into the brand teal over a near-black base,
+/// giving the landing screen a living, high-impact backdrop.
+private struct AuroraBackground: View {
+    var body: some View {
+        TimelineView(.animation) { context in
+            let t = context.date.timeIntervalSinceReferenceDate
+            MeshGradient(
+                width: 3,
+                height: 3,
+                points: [
+                    [0.0, 0.0], [0.5, 0.0], [1.0, 0.0],
+                    [0.0, 0.5],
+                    [drift(t, 0.31, 0.5, 0.18), drift(t, 0.24, 0.5, 0.18)],
+                    [1.0, 0.5],
+                    [0.0, 1.0],
+                    [drift(t, 0.19, 0.5, 0.12), 1.0],
+                    [1.0, 1.0]
+                ],
+                colors: [
+                    .vectorMidnight, .vectorIndigo, .vectorMidnight,
+                    .vectorViolet, .vectorIndigo, .routeTeal,
+                    .vectorMidnight, .routeTeal.opacity(0.6), .vectorMidnight
+                ]
+            )
+        }
+        .overlay(
+            LinearGradient(
+                colors: [.clear, .vectorMidnight.opacity(0.55)],
+                startPoint: .center,
+                endPoint: .bottom
+            )
+        )
+        .ignoresSafeArea()
+    }
+
+    /// A value oscillating around `center` by `amount`, at the given `speed`.
+    private func drift(_ t: TimeInterval, _ speed: Double, _ center: Double, _ amount: Double) -> Float {
+        Float(center + amount * sin(t * speed))
+    }
+}
+
 #Preview {
     AuthGateView()
         .environment(AuthState())
-        .preferredColorScheme(.dark)
 }
