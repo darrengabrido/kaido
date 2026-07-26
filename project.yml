@@ -16,6 +16,9 @@ packages:
   MapboxNavigation:
     url: https://github.com/mapbox/mapbox-navigation-ios.git
     majorVersion: 3.1.0
+  Supabase:
+    url: https://github.com/supabase/supabase-swift
+    majorVersion: 2.0.0
 
 targets:
   Vector:
@@ -29,6 +32,8 @@ targets:
       properties:
         UILaunchScreen: {}
         MBXAccessToken: "$(MAPBOX_ACCESS_TOKEN)"
+        SupabaseHost: "$(SUPABASE_HOST)"
+        SupabaseAnonKey: "$(SUPABASE_ANON_KEY)"
         NSLocationWhenInUseUsageDescription: "Vector needs your location to show you on the map and provide turn-by-turn navigation."
         NSLocationAlwaysAndWhenInUseUsageDescription: "Vector needs your location to track your ride and keep navigating while your phone is locked or in your pocket."
         NSBluetoothAlwaysUsageDescription: "Vector connects to your bike over Bluetooth to show live speed and battery data."
@@ -47,6 +52,8 @@ targets:
         com.apple.developer.icloud-services:
           - CloudKit
         aps-environment: development
+        com.apple.developer.applesignin:
+          - Default
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.darren.vector
@@ -63,3 +70,5 @@ targets:
         product: MapboxNavigationCore
       - package: MapboxNavigation
         product: MapboxNavigationUIKit
+      - package: Supabase
+        product: Supabase

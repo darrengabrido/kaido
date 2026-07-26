@@ -26,6 +26,10 @@
 	<string>Vector needs your location to track your ride and keep navigating while your phone is locked or in your pocket.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Vector needs your location to show you on the map and provide turn-by-turn navigation.</string>
+	<key>SupabaseAnonKey</key>
+	<string>$(SUPABASE_ANON_KEY)</string>
+	<key>SupabaseHost</key>
+	<string>$(SUPABASE_HOST)</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>location</string>
