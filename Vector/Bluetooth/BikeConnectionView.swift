@@ -32,7 +32,7 @@ struct BikeConnectionView: View {
         Section {
             HStack {
                 Image(systemName: authState.isAuthenticated ? "person.crop.circle.fill" : "person.crop.circle")
-                    .foregroundStyle(authState.isAuthenticated ? Color.routeTeal : .secondary)
+                    .foregroundStyle(authState.isAuthenticated ? Color.vectorViolet : .secondary)
                 Text(authState.user?.email ?? "Browsing as Guest")
                     .lineLimit(1)
                 Spacer()
@@ -44,7 +44,7 @@ struct BikeConnectionView: View {
                     Button("Sign In") {
                         authState.exitGuestMode()
                     }
-                    .tint(.routeTeal)
+                    .tint(.vectorViolet)
                 }
             }
         } header: {
@@ -100,7 +100,7 @@ struct BikeConnectionView: View {
                 Button("Scan for Bikes") {
                     bleManager.startScanning()
                 }
-                .tint(.goGreen)
+                .tint(.vectorViolet)
             }
         }
 

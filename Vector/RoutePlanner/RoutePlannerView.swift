@@ -88,7 +88,7 @@ struct RoutePlannerView: View {
                         routeName = ""
                         isShowingNameAlert = true
                     }
-                    .tint(.routeTeal)
+                    .tint(.vectorViolet)
                     .disabled(viewModel.waypoints.count < 2)
                 }
             }
@@ -128,7 +128,7 @@ struct RoutePlannerView: View {
                     }
                 }
             ))
-            .tint(.goGreen)
+            .tint(.vectorViolet)
 
             if let matchingError = viewModel.matchingError {
                 Text(matchingError)
