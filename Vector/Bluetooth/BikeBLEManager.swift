@@ -95,7 +95,7 @@ final class BikeBLEManager: NSObject {
         if let existing = try? context.fetch(descriptor).first {
             existing.lastConnectedAt = Date()
         } else {
-            let profile = BikeProfile(name: peripheral.name ?? "Ebike", peripheralIdentifier: identifier)
+            let profile = BikeProfile(name: peripheral.name ?? "Bike", peripheralIdentifier: identifier)
             profile.lastConnectedAt = Date()
             context.insert(profile)
         }

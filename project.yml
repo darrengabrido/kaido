@@ -1,4 +1,4 @@
-name: EbikeApp
+name: Vector
 options:
   bundleIdPrefix: com.darren
   deploymentTarget:
@@ -18,14 +18,14 @@ packages:
     majorVersion: 3.1.0
 
 targets:
-  EbikeApp:
+  Vector:
     type: application
     platform: iOS
     deploymentTarget: "26.0"
     sources:
-      - path: EbikeApp
+      - path: Vector
     info:
-      path: EbikeApp/Info.plist
+      path: Vector/Info.plist
       properties:
         UILaunchScreen: {}
         MBXAccessToken: "$(MAPBOX_ACCESS_TOKEN)"
@@ -40,7 +40,7 @@ targets:
           # fatal error at init if "audio" is missing, so navigation cannot start without it.
           - audio
     entitlements:
-      path: EbikeApp/EbikeApp.entitlements
+      path: Vector/Vector.entitlements
       properties:
         com.apple.developer.icloud-container-identifiers:
           - iCloud.com.darren.vector

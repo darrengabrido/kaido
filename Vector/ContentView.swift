@@ -31,5 +31,5 @@ struct ContentView: View {
 
 #Preview {
     ContentView()
-        .modelContainer(EbikeModelContainer.shared)
+        .modelContainer(VectorModelContainer.shared)
 }

@@ -111,5 +111,5 @@ private struct RouteRow: View {
 
 #Preview {
     RoutesListView()
-        .modelContainer(EbikeModelContainer.shared)
+        .modelContainer(VectorModelContainer.shared)
 }

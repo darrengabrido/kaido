@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct EbikeApp: App {
+struct VectorApp: App {
     @State private var bleManager = BikeBLEManager()
 
     var body: some Scene {
@@ -11,6 +11,6 @@ struct EbikeApp: App {
                 .tint(.routeTeal)
                 .environment(bleManager)
         }
-        .modelContainer(EbikeModelContainer.shared)
+        .modelContainer(VectorModelContainer.shared)
     }
 }

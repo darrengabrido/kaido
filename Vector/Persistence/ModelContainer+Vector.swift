@@ -1,7 +1,7 @@
 import Foundation
 import SwiftData
 
-enum EbikeModelContainer {
+enum VectorModelContainer {
     static let shared: ModelContainer = {
         let schema = Schema([
             Route.self,

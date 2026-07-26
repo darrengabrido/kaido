@@ -19,10 +19,10 @@ struct RoutePlannerView: View {
                     Puck2D(bearing: .heading)
 
                     if showBikeLanes {
-                        VectorSource(id: "ebike-streets-v8")
+                        VectorSource(id: "streets-v8")
                             .url("mapbox://mapbox.mapbox-streets-v8")
                         // On-street painted bike lane — drawn on the road's own centerline (bike_lane field)
-                        LineLayer(id: "bike-onstreet-lane", source: "ebike-streets-v8")
+                        LineLayer(id: "bike-onstreet-lane", source: "streets-v8")
                             .sourceLayer("road")
                             .filter(Exp(.any) {
                                 Exp(.eq) { Exp(.get) { "bike_lane" }; "yes" }
@@ -39,7 +39,7 @@ struct RoutePlannerView: View {
                             .lineDashArray([2, 2])
                             .slot(.top)
                         // Dedicated, physically-separated cycle path — solid and thicker
-                        LineLayer(id: "bike-dedicated-path", source: "ebike-streets-v8")
+                        LineLayer(id: "bike-dedicated-path", source: "streets-v8")
                             .sourceLayer("road")
                             .filter(Exp(.eq) { Exp(.get) { "type" }; "cycleway" })
                             .lineColor(StyleColor(UIColor(Color.routeTealOnMap)))
@@ -69,7 +69,7 @@ struct RoutePlannerView: View {
                     }
                     .circleEmissiveStrength(1)
                 }
-                .mapStyle(.ebikeNight)
+                .mapStyle(.vectorNight)
                 .onMapTapGesture { context in
                     viewModel.addWaypoint(at: context.coordinate)
                 }
@@ -194,5 +194,5 @@ struct RoutePlannerView: View {
 
 #Preview {
     RoutePlannerView()
-        .modelContainer(EbikeModelContainer.shared)
+        .modelContainer(VectorModelContainer.shared)
 }

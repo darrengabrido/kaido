@@ -43,7 +43,7 @@ struct RouteDetailView: View {
                     .lineEmissiveStrength(1)
                 }
             }
-            .mapStyle(.ebikeNight)
+            .mapStyle(.vectorNight)
             .ignoresSafeArea()
 
             VStack(alignment: .leading, spacing: 12) {

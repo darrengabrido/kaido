@@ -7,7 +7,7 @@ struct NavigationSessionView: UIViewControllerRepresentable {
     let onDismiss: (Bool) -> Void
 
     func makeUIViewController(context: Context) -> NavigationViewController {
-        let provider = EbikeNavigationProvider.shared
+        let provider = VectorNavigationProvider.shared
         let nightStyle = StandardNightStyle()
         nightStyle.tintColor = UIColor(Color.routeTeal)
         let navigationOptions = NavigationOptions(

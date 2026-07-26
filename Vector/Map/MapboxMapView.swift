@@ -3,7 +3,7 @@ import MapboxMaps
 import CoreLocation
 
 extension MapStyle {
-    static let ebikeNight = MapStyle.standard(lightPreset: .night)
+    static let vectorNight = MapStyle.standard(lightPreset: .night)
 }
 
 struct MapboxMapView: View {
@@ -22,11 +22,11 @@ struct MapboxMapView: View {
                 Puck2D(bearing: .heading)
 
                 if showBikeLanes {
-                    VectorSource(id: "ebike-streets-v8")
+                    VectorSource(id: "streets-v8")
                         .url("mapbox://mapbox.mapbox-streets-v8")
                     // On-street painted bike lane — drawn on the road's own centerline (bike_lane field),
                     // dashed so it reads as "lane within the road" rather than a separate path.
-                    LineLayer(id: "bike-onstreet-lane", source: "ebike-streets-v8")
+                    LineLayer(id: "bike-onstreet-lane", source: "streets-v8")
                         .sourceLayer("road")
                         .filter(Exp(.any) {
                             Exp(.eq) { Exp(.get) { "bike_lane" }; "yes" }
@@ -43,7 +43,7 @@ struct MapboxMapView: View {
                         .lineDashArray([2, 2])
                         .slot(.top)
                     // Dedicated, physically-separated cycle path — solid and thicker
-                    LineLayer(id: "bike-dedicated-path", source: "ebike-streets-v8")
+                    LineLayer(id: "bike-dedicated-path", source: "streets-v8")
                         .sourceLayer("road")
                         .filter(Exp(.eq) { Exp(.get) { "type" }; "cycleway" })
                         .lineColor(StyleColor(UIColor(Color.routeTealOnMap)))
@@ -85,7 +85,7 @@ struct MapboxMapView: View {
                 }
                 .lineEmissiveStrength(1)
             }
-            .mapStyle(.ebikeNight)
+            .mapStyle(.vectorNight)
             .ornamentOptions(OrnamentOptions(
                 scaleBar: ScaleBarViewOptions(visibility: .hidden),
                 // The compass defaults to .topTrailing with an 8pt margin, which puts it
