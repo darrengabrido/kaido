@@ -140,6 +140,7 @@ struct MapboxMapView: View {
                 }
                 .glassEffect(.regular, in: Circle())
                 .frame(maxWidth: .infinity, alignment: .trailing)
+                .accessibilityLabel(showBikeLanes ? "Hide bike lanes" : "Show bike lanes")
 
                 if let destination = searchViewModel.selectedDestination {
                     destinationCard(destination)

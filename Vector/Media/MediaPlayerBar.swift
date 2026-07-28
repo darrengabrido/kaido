@@ -34,6 +34,7 @@ struct MediaPlayerBar: View {
                     .frame(width: 32, height: 32)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Previous track")
 
             Button {
                 manager.togglePlayPause()
@@ -43,6 +44,7 @@ struct MediaPlayerBar: View {
                     .frame(width: 32, height: 32)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(manager.isPlaying ? "Pause" : "Play")
 
             Button {
                 manager.skipToNext()
@@ -52,6 +54,7 @@ struct MediaPlayerBar: View {
                     .frame(width: 32, height: 32)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Next track")
         }
         .foregroundStyle(Color.primary)
         .padding(.horizontal, 12)
