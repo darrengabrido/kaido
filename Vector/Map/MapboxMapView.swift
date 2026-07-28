@@ -24,37 +24,7 @@ struct MapboxMapView: View {
                 Puck2D(bearing: .heading)
 
                 if showBikeLanes {
-                    VectorSource(id: "streets-v8")
-                        .url("mapbox://mapbox.mapbox-streets-v8")
-                    // On-street painted bike lane — drawn on the road's own centerline (bike_lane field),
-                    // dashed so it reads as "lane within the road" rather than a separate path.
-                    LineLayer(id: "bike-onstreet-lane", source: "streets-v8")
-                        .sourceLayer("road")
-                        .filter(Exp(.any) {
-                            Exp(.eq) { Exp(.get) { "bike_lane" }; "yes" }
-                            Exp(.eq) { Exp(.get) { "bike_lane" }; "left" }
-                            Exp(.eq) { Exp(.get) { "bike_lane" }; "right" }
-                            Exp(.eq) { Exp(.get) { "bike_lane" }; "both" }
-                        })
-                        .lineColor(StyleColor(UIColor(Color.routeTealOnMap)))
-                        .lineWidth(3.0)
-                        .lineOpacity(0.95)
-                        .lineEmissiveStrength(1)
-                        .lineCap(.butt)
-                        .lineJoin(.round)
-                        .lineDashArray([2, 2])
-                        .slot(.top)
-                    // Dedicated, physically-separated cycle path — solid and thicker
-                    LineLayer(id: "bike-dedicated-path", source: "streets-v8")
-                        .sourceLayer("road")
-                        .filter(Exp(.eq) { Exp(.get) { "type" }; "cycleway" })
-                        .lineColor(StyleColor(UIColor(Color.routeTealOnMap)))
-                        .lineWidth(4.5)
-                        .lineOpacity(1.0)
-                        .lineEmissiveStrength(1)
-                        .lineCap(.round)
-                        .lineJoin(.round)
-                        .slot(.top)
+                    BikeLaneMapLayers()
                 }
 
                 if let destination = searchViewModel.selectedDestination {
@@ -70,15 +40,17 @@ struct MapboxMapView: View {
                     .circleEmissiveStrength(1)
                 }
 
-                // Draw alternates first (dim, thin) so the main/selected route always paints on top.
+                // Draw alternates first. Their distinct colours keep choices legible, while a
+                // narrow, translucent stroke makes the selected violet route the visual focus.
                 PolylineAnnotationGroup(
                     navigationViewModel.routeOptions.filter { !$0.isMain && $0.coordinates.count > 1 }
                 ) { option in
                     PolylineAnnotation(lineCoordinates: option.coordinates)
-                        .lineColor(UIColor(Color.vectorDim))
-                        .lineWidth(3)
+                        .lineColor(UIColor(routeColor(for: option)))
+                        .lineWidth(2.5)
                 }
-                .lineOpacity(0.55)
+                .lineOpacity(0.38)
+                .lineEmissiveStrength(0.6)
 
                 if let mainRoute = navigationViewModel.routeOptions.first(where: { $0.isMain && $0.coordinates.count > 1 }) {
                     RouteGlowPolyline(coordinates: mainRoute.coordinates)
@@ -162,11 +134,19 @@ struct MapboxMapView: View {
         }
         .onChange(of: locationManager.currentLocation?.coordinate.latitude) { _, _ in
             searchViewModel.proximity = locationManager.currentLocation?.coordinate
+            // Destination may have been picked before the first fix arrived — preview now.
+            if let destination = searchViewModel.selectedDestination,
+               navigationViewModel.navigationRoutes == nil,
+               !navigationViewModel.isRequestingRoute,
+               navigationViewModel.requestError == "Waiting for your location…" {
+                fetchRoutes(to: destination)
+            }
         }
         .onChange(of: searchViewModel.query) { _, _ in
             searchViewModel.queryDidChange()
         }
         .fullScreenCover(isPresented: $isPresentingNavigation) {
+            // Capture routes up front so a preference re-rank can't blank the cover mid-present.
             if let navigationRoutes = navigationViewModel.navigationRoutes {
                 NavigationSessionView(
                     navigationRoutes: navigationRoutes,
@@ -177,6 +157,9 @@ struct MapboxMapView: View {
                     clearDestination()
                 }
                 .ignoresSafeArea()
+            } else {
+                Color.clear
+                    .onAppear { isPresentingNavigation = false }
             }
         }
     }
@@ -299,73 +282,138 @@ struct MapboxMapView: View {
                     .foregroundStyle(.red)
             }
 
+            routingPreferenceToggle
+
+            if navigationViewModel.isRequestingRoute && navigationViewModel.navigationRoutes == nil {
+                HStack(spacing: 8) {
+                    ProgressView()
+                    Text("Previewing route…")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 4)
+            }
+
             if navigationViewModel.navigationRoutes != nil {
                 routeOptionsList
             }
 
             Button {
-                if navigationViewModel.navigationRoutes == nil {
-                    fetchRoutes(to: destination)
-                } else {
-                    isPresentingNavigation = true
-                }
+                isPresentingNavigation = true
             } label: {
-                if navigationViewModel.isRequestingRoute {
-                    ProgressView()
-                        .frame(maxWidth: .infinity)
-                } else {
-                    Label(
-                        navigationViewModel.navigationRoutes == nil ? "Get Routes" : "Start Navigation",
-                        systemImage: "location.north.line.fill"
-                    )
+                Label("Start Navigation", systemImage: "location.north.line.fill")
                     .frame(maxWidth: .infinity)
-                }
             }
             .buttonStyle(.glassProminent)
             .tint(.vectorViolet)
-            .disabled(navigationViewModel.isRequestingRoute)
+            .disabled(
+                navigationViewModel.isRequestingRoute
+                    || navigationViewModel.navigationRoutes == nil
+            )
         }
         .padding()
         .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 20))
     }
 
+    /// Quiet leans on dedicated lanes and quieter streets; Fast picks the quickest alternative.
+    /// Lives next to the alternatives list so the preference is visible while comparing routes.
+    private var routingPreferenceToggle: some View {
+        Picker("Routing style", selection: $navigationViewModel.preference) {
+            ForEach(RoutingPreference.allCases) { preference in
+                Label(preference.title, systemImage: preference.systemImage)
+                    .tag(preference)
+                    .accessibilityLabel(preference.accessibilityLabel)
+            }
+        }
+        .pickerStyle(.segmented)
+        .disabled(navigationViewModel.isRequestingRoute)
+        .accessibilityHint("Changes which route Vector recommends among alternatives")
+    }
+
     /// Recommended routes for the currently selected destination — tap one to make it the
     /// route "Start Navigation" will launch. Mirrors what's drawn on the map: the picked
-    /// route is violet and full-strength, the rest are dim paceBlue.
+    /// route is violet and full-strength, the rest are dim.
     private var routeOptionsList: some View {
         VStack(alignment: .leading, spacing: 6) {
             ForEach(navigationViewModel.routeOptions) { option in
                 Button {
-                    Task { await navigationViewModel.selectRoute(option) }
+                    Task {
+                        await navigationViewModel.selectRoute(option)
+                        overviewSelectedRoute()
+                    }
                 } label: {
-                    HStack(spacing: 8) {
+                    HStack(alignment: .top, spacing: 8) {
                         Circle()
-                            // Alternates recede to the same dim used for their map polylines.
-                            .fill(option.isMain ? Color.vectorViolet : Color.vectorDim)
+                            .fill(routeColor(for: option))
                             .frame(width: 8, height: 8)
-                        Text(formattedDuration(option.expectedTravelTime))
-                            .font(.subheadline.weight(option.isMain ? .semibold : .regular))
-                            .foregroundStyle(option.isMain ? Color.primary : Color.secondary)
-                        Text("·")
-                            .foregroundStyle(.secondary)
-                        Text(formattedDistance(option.distanceMeters))
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        if option.isMain {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundStyle(Color.vectorViolet)
+                            .padding(.top, 6)
+
+                        VStack(alignment: .leading, spacing: 3) {
+                            HStack(spacing: 8) {
+                                Text(formattedDuration(option.expectedTravelTime))
+                                    .font(.subheadline.weight(option.isMain ? .semibold : .regular))
+                                    .foregroundStyle(option.isMain ? Color.primary : Color.secondary)
+                                Text("·")
+                                    .foregroundStyle(.secondary)
+                                Text(formattedDistance(option.distanceMeters))
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                Spacer(minLength: 0)
+                                if option.isMain {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundStyle(Color.vectorViolet)
+                                }
+                            }
+
+                            Text(option.stressProfile.headline)
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(quietColor(for: option.stressProfile.score))
+
+                            Text(option.stressProfile.summary)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
                         }
                     }
-                    .padding(.vertical, 6)
+                    .padding(.vertical, 8)
                     .padding(.horizontal, 10)
                     .background(option.isMain ? Color.vectorViolet.opacity(0.14) : Color.clear)
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(routeAccessibilityLabel(for: option))
             }
         }
+    }
+
+    private func quietColor(for stress: Double) -> Color {
+        switch stress {
+        case ..<0.35: .statusGood
+        case ..<0.55: .statusCaution
+        default: .statusCritical
+        }
+    }
+
+    /// Violet remains the active route. Mapbox returns up to two cycling alternatives, which
+    /// receive blue and coral respectively — deliberately distinct from mint bike lanes.
+    private func routeColor(for option: RouteOption) -> Color {
+        guard !option.isMain else { return .vectorViolet }
+        let alternateIndex = navigationViewModel.routeOptions
+            .filter { !$0.isMain }
+            .firstIndex { $0.id == option.id } ?? 0
+
+        switch alternateIndex % 2 {
+        case 0: return .routeBlueOnMap
+        default: return .routeCoralOnMap
+        }
+    }
+
+    private func routeAccessibilityLabel(for option: RouteOption) -> String {
+        let duration = formattedDuration(option.expectedTravelTime)
+        let distance = formattedDistance(option.distanceMeters)
+        let selected = option.isMain ? ", selected" : ""
+        return "\(duration), \(distance), \(option.stressProfile.headline), \(option.stressProfile.summary)\(selected)"
     }
 
     private func formattedDuration(_ seconds: TimeInterval) -> String {
@@ -382,10 +430,12 @@ struct MapboxMapView: View {
 
     private func selectDestination(_ result: SearchResult) {
         searchViewModel.selectResult(result)
+        navigationViewModel.clear()
         isSearchFocused = false
         withAnimation {
             viewport = .camera(center: result.coordinate, zoom: 15)
         }
+        fetchRoutes(to: result)
     }
 
     private func clearDestination() {
@@ -405,6 +455,16 @@ struct MapboxMapView: View {
             await navigationViewModel.requestRoutes(
                 waypointCoordinates: [currentCoordinate, destination.coordinate]
             )
+            overviewSelectedRoute()
+        }
+    }
+
+    private func overviewSelectedRoute() {
+        guard let main = navigationViewModel.routeOptions.first(where: { $0.isMain }),
+              main.coordinates.count > 1
+        else { return }
+        withAnimation {
+            viewport = .overview(geometry: LineString(main.coordinates))
         }
     }
 }

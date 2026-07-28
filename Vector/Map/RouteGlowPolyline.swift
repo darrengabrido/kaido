@@ -21,12 +21,13 @@ struct RouteGlowPolyline: MapContent {
         .lineEmissiveStrength(1)
         .slot(.middle)
 
-        // Core — bold; the lane layers draw above it, so it doesn't need to be see-through.
+        // Core — slightly translucent so teal lane markings above it still feel woven into
+        // the route instead of pasted on top of a solid bar.
         PolylineAnnotationGroup {
             PolylineAnnotation(lineCoordinates: coordinates)
                 .lineColor(UIColor(Color.vectorVioletOnMap))
                 .lineWidth(6)
-                .lineOpacity(0.8)
+                .lineOpacity(0.72)
         }
         .lineEmissiveStrength(1)
         .slot(.middle)

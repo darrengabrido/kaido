@@ -52,9 +52,9 @@ private struct LineSwatch: View {
             .stroke(
                 Color.routeTealOnMap,
                 style: StrokeStyle(
-                    lineWidth: 3,
+                    lineWidth: dashed ? 3 : 4,
                     lineCap: dashed ? .butt : .round,
-                    dash: dashed ? [4, 3] : []
+                    dash: dashed ? [5, 3] : []
                 )
             )
         }
