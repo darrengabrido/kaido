@@ -8,7 +8,7 @@ struct RideHUDView: View {
             // Connection status row
             HStack(spacing: 5) {
                 Circle()
-                    .fill(telemetry.isConnected ? Color.goGreen : Color.secondary)
+                    .fill(telemetry.isConnected ? Color.statusGood : Color.secondary)
                     .frame(width: 7, height: 7)
                 Text(telemetry.isConnected
                      ? (telemetry.connectedPeripheralName ?? "Bike")
@@ -28,7 +28,7 @@ struct RideHUDView: View {
                 HStack(alignment: .firstTextBaseline, spacing: 2) {
                     Text(speedString)
                         .font(.system(size: 26, weight: .semibold, design: .rounded))
-                        .foregroundStyle(Color.paceBlue)
+                        .foregroundStyle(Color.vectorInk)
                     Text("km/h")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -38,7 +38,7 @@ struct RideHUDView: View {
                 HStack(alignment: .firstTextBaseline, spacing: 2) {
                     Text(cadenceString)
                         .font(.system(size: 15, weight: .medium, design: .rounded))
-                        .foregroundStyle(Color.effortCoral)
+                        .foregroundStyle(Color.vectorDim)
                     Text("rpm")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
@@ -61,7 +61,7 @@ struct RideHUDView: View {
 
     @ViewBuilder
     private func batteryView(_ pct: Int) -> some View {
-        let color: Color = pct <= 20 ? Color.effortCoral : pct <= 40 ? Color.favoriteAmber : Color.routeTeal
+        let color: Color = pct <= 20 ? Color.statusCritical : pct <= 40 ? Color.statusCaution : Color.statusGood
         HStack(spacing: 3) {
             Image(systemName: batteryIcon(pct))
                 .imageScale(.small)

@@ -82,7 +82,7 @@ struct RouteDetailView: View {
                 } label: {
                     Image(systemName: "bicycle")
                         .font(.system(size: 16, weight: .medium))
-                        .foregroundStyle(showBikeLanes ? Color.routeTeal : Color.secondary)
+                        .foregroundStyle(showBikeLanes ? Color.vectorDim : Color.secondary)
                         .frame(width: 44, height: 44)
                 }
                 .glassEffect(.regular, in: Circle())
@@ -100,8 +100,8 @@ struct RouteDetailView: View {
                     .font(.title2.bold())
 
                 HStack(spacing: 8) {
-                    StatTile(value: formattedDistance, label: "distance", tint: .routeTeal)
-                    StatTile(value: formattedElevation, label: "ft climb", tint: .effortCoral)
+                    StatTile(value: formattedDistance, label: "distance", tint: .vectorDim)
+                    StatTile(value: formattedElevation, label: "ft climb", tint: .vectorDim)
                 }
 
                 if let requestError = navigationViewModel.requestError {
@@ -144,13 +144,16 @@ struct RouteDetailView: View {
                 } label: {
                     Image(systemName: route.isFavorite ? "star.fill" : "star")
                 }
-                .tint(.favoriteAmber)
+                .tint(.vectorViolet)
             }
         }
         .fullScreenCover(isPresented: $isPresentingNavigation) {
             if let navigationRoutes = navigationViewModel.navigationRoutes {
                 ZStack(alignment: .bottomTrailing) {
-                    NavigationSessionView(navigationRoutes: navigationRoutes) { _ in
+                    NavigationSessionView(
+                        navigationRoutes: navigationRoutes,
+                        telemetry: bleManager.telemetry
+                    ) { _ in
                         logRide()
                         isPresentingNavigation = false
                         navigationViewModel.clear()

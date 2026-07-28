@@ -22,6 +22,11 @@ struct ContentView: View {
                 .tabItem {
                     Label("Bike", systemImage: "bicycle")
                 }
+
+            ProfileView()
+                .tabItem {
+                    Label("Profile", systemImage: "person.crop.circle")
+                }
         }
         .task {
             locationManager.requestWhenInUseAuthorization()
