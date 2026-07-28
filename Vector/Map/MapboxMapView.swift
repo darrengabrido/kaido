@@ -162,11 +162,19 @@ struct MapboxMapView: View {
         }
         .onChange(of: locationManager.currentLocation?.coordinate.latitude) { _, _ in
             searchViewModel.proximity = locationManager.currentLocation?.coordinate
+            // Destination may have been picked before the first fix arrived — preview now.
+            if let destination = searchViewModel.selectedDestination,
+               navigationViewModel.navigationRoutes == nil,
+               !navigationViewModel.isRequestingRoute,
+               navigationViewModel.requestError == "Waiting for your location…" {
+                fetchRoutes(to: destination)
+            }
         }
         .onChange(of: searchViewModel.query) { _, _ in
             searchViewModel.queryDidChange()
         }
         .fullScreenCover(isPresented: $isPresentingNavigation) {
+            // Capture routes up front so a preference re-rank can't blank the cover mid-present.
             if let navigationRoutes = navigationViewModel.navigationRoutes {
                 NavigationSessionView(
                     navigationRoutes: navigationRoutes,
@@ -177,6 +185,9 @@ struct MapboxMapView: View {
                     clearDestination()
                 }
                 .ignoresSafeArea()
+            } else {
+                Color.clear
+                    .onAppear { isPresentingNavigation = false }
             }
         }
     }
@@ -301,37 +312,39 @@ struct MapboxMapView: View {
 
             routingPreferenceToggle
 
+            if navigationViewModel.isRequestingRoute && navigationViewModel.navigationRoutes == nil {
+                HStack(spacing: 8) {
+                    ProgressView()
+                    Text("Previewing route…")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 4)
+            }
+
             if navigationViewModel.navigationRoutes != nil {
                 routeOptionsList
             }
 
             Button {
-                if navigationViewModel.navigationRoutes == nil {
-                    fetchRoutes(to: destination)
-                } else {
-                    isPresentingNavigation = true
-                }
+                isPresentingNavigation = true
             } label: {
-                if navigationViewModel.isRequestingRoute {
-                    ProgressView()
-                        .frame(maxWidth: .infinity)
-                } else {
-                    Label(
-                        navigationViewModel.navigationRoutes == nil ? "Get Routes" : "Start Navigation",
-                        systemImage: "location.north.line.fill"
-                    )
+                Label("Start Navigation", systemImage: "location.north.line.fill")
                     .frame(maxWidth: .infinity)
-                }
             }
             .buttonStyle(.glassProminent)
             .tint(.vectorViolet)
-            .disabled(navigationViewModel.isRequestingRoute)
+            .disabled(
+                navigationViewModel.isRequestingRoute
+                    || navigationViewModel.navigationRoutes == nil
+            )
         }
         .padding()
         .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 20))
     }
 
-    /// Calm leans on dedicated lanes and quieter streets; Fast picks the quickest alternative.
+    /// Quiet leans on dedicated lanes and quieter streets; Fast picks the quickest alternative.
     /// Lives next to the alternatives list so the preference is visible while comparing routes.
     private var routingPreferenceToggle: some View {
         Picker("Routing style", selection: $navigationViewModel.preference) {
@@ -353,60 +366,69 @@ struct MapboxMapView: View {
         VStack(alignment: .leading, spacing: 6) {
             ForEach(navigationViewModel.routeOptions) { option in
                 Button {
-                    Task { await navigationViewModel.selectRoute(option) }
+                    Task {
+                        await navigationViewModel.selectRoute(option)
+                        overviewSelectedRoute()
+                    }
                 } label: {
-                    HStack(spacing: 8) {
+                    HStack(alignment: .top, spacing: 8) {
                         Circle()
                             // Alternates recede to the same dim used for their map polylines.
                             .fill(option.isMain ? Color.vectorViolet : Color.vectorDim)
                             .frame(width: 8, height: 8)
-                        Text(formattedDuration(option.expectedTravelTime))
-                            .font(.subheadline.weight(option.isMain ? .semibold : .regular))
-                            .foregroundStyle(option.isMain ? Color.primary : Color.secondary)
-                        Text("·")
-                            .foregroundStyle(.secondary)
-                        Text(formattedDistance(option.distanceMeters))
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                        if navigationViewModel.preference == .calm {
-                            Text("·")
-                                .foregroundStyle(.secondary)
-                            Label(calmLabel(for: option.stressScore), systemImage: "leaf.fill")
+                            .padding(.top, 6)
+
+                        VStack(alignment: .leading, spacing: 3) {
+                            HStack(spacing: 8) {
+                                Text(formattedDuration(option.expectedTravelTime))
+                                    .font(.subheadline.weight(option.isMain ? .semibold : .regular))
+                                    .foregroundStyle(option.isMain ? Color.primary : Color.secondary)
+                                Text("·")
+                                    .foregroundStyle(.secondary)
+                                Text(formattedDistance(option.distanceMeters))
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                Spacer(minLength: 0)
+                                if option.isMain {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundStyle(Color.vectorViolet)
+                                }
+                            }
+
+                            Text(option.stressProfile.headline)
                                 .font(.caption.weight(.medium))
-                                .foregroundStyle(calmColor(for: option.stressScore))
-                                .labelStyle(.titleAndIcon)
-                        }
-                        Spacer()
-                        if option.isMain {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundStyle(Color.vectorViolet)
+                                .foregroundStyle(quietColor(for: option.stressProfile.score))
+
+                            Text(option.stressProfile.summary)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
                         }
                     }
-                    .padding(.vertical, 6)
+                    .padding(.vertical, 8)
                     .padding(.horizontal, 10)
                     .background(option.isMain ? Color.vectorViolet.opacity(0.14) : Color.clear)
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(routeAccessibilityLabel(for: option))
             }
         }
     }
 
-    private func calmLabel(for stress: Double) -> String {
-        switch stress {
-        case ..<0.35: "Quiet"
-        case ..<0.55: "Mixed"
-        default: "Busy"
-        }
-    }
-
-    private func calmColor(for stress: Double) -> Color {
+    private func quietColor(for stress: Double) -> Color {
         switch stress {
         case ..<0.35: .statusGood
         case ..<0.55: .statusCaution
         default: .statusCritical
         }
+    }
+
+    private func routeAccessibilityLabel(for option: RouteOption) -> String {
+        let duration = formattedDuration(option.expectedTravelTime)
+        let distance = formattedDistance(option.distanceMeters)
+        let selected = option.isMain ? ", selected" : ""
+        return "\(duration), \(distance), \(option.stressProfile.headline), \(option.stressProfile.summary)\(selected)"
     }
 
     private func formattedDuration(_ seconds: TimeInterval) -> String {
@@ -423,10 +445,12 @@ struct MapboxMapView: View {
 
     private func selectDestination(_ result: SearchResult) {
         searchViewModel.selectResult(result)
+        navigationViewModel.clear()
         isSearchFocused = false
         withAnimation {
             viewport = .camera(center: result.coordinate, zoom: 15)
         }
+        fetchRoutes(to: result)
     }
 
     private func clearDestination() {
@@ -446,6 +470,16 @@ struct MapboxMapView: View {
             await navigationViewModel.requestRoutes(
                 waypointCoordinates: [currentCoordinate, destination.coordinate]
             )
+            overviewSelectedRoute()
+        }
+    }
+
+    private func overviewSelectedRoute() {
+        guard let main = navigationViewModel.routeOptions.first(where: { $0.isMain }),
+              main.coordinates.count > 1
+        else { return }
+        withAnimation {
+            viewport = .overview(geometry: LineString(main.coordinates))
         }
     }
 }

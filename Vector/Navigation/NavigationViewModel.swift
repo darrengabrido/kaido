@@ -7,8 +7,7 @@ struct RouteOption: Identifiable {
     let id: String
     let distanceMeters: Double
     let expectedTravelTime: TimeInterval
-    /// Distance-weighted stress in `0...1`. Lower is calmer.
-    let stressScore: Double
+    let stressProfile: RouteStressScorer.Profile
     let coordinates: [CLLocationCoordinate2D]
     let isMain: Bool
     fileprivate let alternativeRoute: AlternativeRoute?
@@ -24,12 +23,12 @@ final class NavigationViewModel {
         didSet {
             RoutingPreferenceStore.current = preference
             guard oldValue != preference else { return }
-            Task { await applyPreferenceChange() }
+            // Re-rank in place — no network round-trip, so toggling never blanks routes.
+            Task { await promotePreferredRoute() }
         }
     }
 
     private let directionsService = DirectionsService()
-    private var lastWaypointCoordinates: [CLLocationCoordinate2D] = []
 
     var routeOptions: [RouteOption] {
         guard let navigationRoutes else { return [] }
@@ -39,7 +38,7 @@ final class NavigationViewModel {
                 id: main.routeId.description,
                 distanceMeters: main.route.distance,
                 expectedTravelTime: main.route.expectedTravelTime,
-                stressScore: RouteStressScorer.score(for: main.route),
+                stressProfile: RouteStressScorer.profile(for: main.route),
                 coordinates: main.route.shape?.coordinates ?? [],
                 isMain: true,
                 alternativeRoute: nil
@@ -51,7 +50,7 @@ final class NavigationViewModel {
                     id: alternative.routeId.description,
                     distanceMeters: alternative.route.distance,
                     expectedTravelTime: alternative.route.expectedTravelTime,
-                    stressScore: RouteStressScorer.score(for: alternative.route),
+                    stressProfile: RouteStressScorer.profile(for: alternative.route),
                     coordinates: alternative.route.shape?.coordinates ?? [],
                     isMain: false,
                     alternativeRoute: alternative
@@ -62,17 +61,16 @@ final class NavigationViewModel {
     }
 
     func requestRoutes(waypointCoordinates: [CLLocationCoordinate2D]) async {
-        lastWaypointCoordinates = waypointCoordinates
         isRequestingRoute = true
         requestError = nil
         defer { isRequestingRoute = false }
         do {
             navigationRoutes = try await directionsService.requestRoute(
-                waypointCoordinates: waypointCoordinates,
-                preference: preference
+                waypointCoordinates: waypointCoordinates
             )
             await promotePreferredRoute()
         } catch {
+            navigationRoutes = nil
             requestError = error.localizedDescription
         }
     }
@@ -90,16 +88,6 @@ final class NavigationViewModel {
     func clear() {
         navigationRoutes = nil
         requestError = nil
-        lastWaypointCoordinates = []
-    }
-
-    // MARK: - Preference
-
-    private func applyPreferenceChange() async {
-        guard !lastWaypointCoordinates.isEmpty else { return }
-        // Re-fetch so Calm can apply ferry exclusion (and Fast can drop it). The response
-        // is then re-ranked so the main route matches the new preference.
-        await requestRoutes(waypointCoordinates: lastWaypointCoordinates)
     }
 
     /// Picks the alternative that best matches the active preference and promotes it to main.
@@ -114,15 +102,15 @@ final class NavigationViewModel {
         switch preference {
         case .fast:
             return options.min(by: { $0.expectedTravelTime < $1.expectedTravelTime })
-        case .calm:
-            // Prefer the calmest ride, but don't send someone on a wild detour — ignore
+        case .quiet:
+            // Prefer the quietest ride, but don't send someone on a wild detour — ignore
             // options more than 40% slower than the fastest alternative.
             guard let fastest = options.map(\.expectedTravelTime).min() else { return nil }
             let candidates = options.filter { $0.expectedTravelTime <= fastest * 1.4 }
             let pool = candidates.isEmpty ? options : candidates
             return pool.min { lhs, rhs in
-                if abs(lhs.stressScore - rhs.stressScore) > 0.02 {
-                    return lhs.stressScore < rhs.stressScore
+                if abs(lhs.stressProfile.score - rhs.stressProfile.score) > 0.02 {
+                    return lhs.stressProfile.score < rhs.stressProfile.score
                 }
                 return lhs.expectedTravelTime < rhs.expectedTravelTime
             }

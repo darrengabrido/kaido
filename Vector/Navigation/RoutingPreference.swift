@@ -2,32 +2,32 @@ import Foundation
 
 /// How Vector should choose among cycling route alternatives.
 ///
-/// Mapbox's `cycling` profile already leans toward bike infrastructure. Calm vs Fast
-/// sharpens that: Calm avoids ferries and promotes the lowest-stress alternative;
-/// Fast keeps the request unconstrained and promotes the quickest alternative.
+/// Mapbox's `cycling` profile already leans toward bike infrastructure. Quiet vs Fast
+/// only re-ranks the returned alternatives: Quiet promotes the lowest-stress option;
+/// Fast promotes the quickest.
 enum RoutingPreference: String, CaseIterable, Identifiable, Sendable {
-    case calm
+    case quiet
     case fast
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .calm: "Calm"
+        case .quiet: "Quiet"
         case .fast: "Fast"
         }
     }
 
     var systemImage: String {
         switch self {
-        case .calm: "leaf.fill"
+        case .quiet: "leaf.fill"
         case .fast: "bolt.fill"
         }
     }
 
     var accessibilityLabel: String {
         switch self {
-        case .calm: "Prefer calm routes on dedicated lanes and quieter streets"
+        case .quiet: "Prefer quiet routes on dedicated lanes and quieter streets"
         case .fast: "Prefer the fastest route"
         }
     }
@@ -38,10 +38,10 @@ enum RoutingPreferenceStore {
 
     static var current: RoutingPreference {
         get {
-            guard let raw = UserDefaults.standard.string(forKey: key),
-                  let preference = RoutingPreference(rawValue: raw)
-            else { return .calm }
-            return preference
+            guard let raw = UserDefaults.standard.string(forKey: key) else { return .quiet }
+            // Migrate the previous "calm" preference name.
+            if raw == "calm" { return .quiet }
+            return RoutingPreference(rawValue: raw) ?? .quiet
         }
         set {
             UserDefaults.standard.set(newValue.rawValue, forKey: key)

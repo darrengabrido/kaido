@@ -13,10 +13,16 @@ struct SearchResult: Identifiable {
 }
 
 enum GeocodingError: LocalizedError {
+    case missingAccessToken
+    case httpStatus(Int)
     case invalidResponse
 
     var errorDescription: String? {
         switch self {
+        case .missingAccessToken:
+            return "Mapbox token missing — add it to Config/Secrets.xcconfig."
+        case .httpStatus(let code):
+            return "Search failed (HTTP \(code)). Check your Mapbox token."
         case .invalidResponse:
             return "Couldn't reach search. Try again."
         }
@@ -28,13 +34,18 @@ enum GeocodingError: LocalizedError {
 /// places with categories, rather than the address-only results the Geocoding API gives.
 struct GeocodingService {
     func search(query: String, proximity: CLLocationCoordinate2D?) async throws -> [SearchResult] {
+        let accessToken = resolvedAccessToken()
+        guard !accessToken.isEmpty, !Self.isPlaceholderToken(accessToken) else {
+            throw GeocodingError.missingAccessToken
+        }
+
         guard var components = URLComponents(string: "https://api.mapbox.com/search/searchbox/v1/forward") else {
             throw GeocodingError.invalidResponse
         }
         var queryItems = [
             URLQueryItem(name: "q", value: query),
             URLQueryItem(name: "limit", value: "8"),
-            URLQueryItem(name: "access_token", value: MapboxOptions.accessToken)
+            URLQueryItem(name: "access_token", value: accessToken)
         ]
         if let proximity {
             queryItems.append(URLQueryItem(name: "proximity", value: "\(proximity.longitude),\(proximity.latitude)"))
@@ -44,8 +55,11 @@ struct GeocodingService {
         guard let url = components.url else { throw GeocodingError.invalidResponse }
 
         let (data, response) = try await URLSession.shared.data(from: url)
-        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+        guard let http = response as? HTTPURLResponse else {
             throw GeocodingError.invalidResponse
+        }
+        guard http.statusCode == 200 else {
+            throw GeocodingError.httpStatus(http.statusCode)
         }
 
         let decoded = try JSONDecoder().decode(SearchBoxResponse.self, from: data)
@@ -65,6 +79,18 @@ struct GeocodingService {
                 isPOI: isPOI
             )
         }
+    }
+
+    /// Prefer the Maps SDK's live token, fall back to the Info.plist value XcodeGen injects.
+    private func resolvedAccessToken() -> String {
+        let fromOptions = MapboxOptions.accessToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !fromOptions.isEmpty { return fromOptions }
+        return (Bundle.main.object(forInfoDictionaryKey: "MBXAccessToken") as? String ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func isPlaceholderToken(_ token: String) -> Bool {
+        token.contains("your_mapbox") || token.hasSuffix("_here")
     }
 
     /// Maps Mapbox "maki" icon names to the closest SF Symbol.

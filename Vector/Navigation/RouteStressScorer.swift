@@ -3,26 +3,68 @@ import MapboxDirections
 
 /// Estimates how stressful a cycling route is from Mapbox step metadata.
 ///
-/// Lower scores are calmer. Dedicated cycle infrastructure and quiet streets
+/// Lower scores are quieter. Dedicated cycle infrastructure and quiet streets
 /// score low; primary arterials, trunks, and motorways score high. Distance-weighted
-/// so a short dash on a busy road doesn't dominate a mostly-calm ride.
+/// so a short dash on a busy road doesn't dominate a mostly-quiet ride.
 enum RouteStressScorer {
-    /// Distance-weighted mean stress in `0...1`.
-    static func score(for route: MapboxDirections.Route) -> Double {
+    /// Distance share in each stress band, plus the mean score used for ranking.
+    struct Profile: Sendable {
+        /// Distance-weighted mean stress in `0...1`. Lower is quieter.
+        let score: Double
+        /// Fraction of route distance classified quiet / mixed / busy. Sum ≈ 1.
+        let quietFraction: Double
+        let mixedFraction: Double
+        let busyFraction: Double
+
+        var summary: String {
+            let quietPct = Int((quietFraction * 100).rounded())
+            let mixedPct = Int((mixedFraction * 100).rounded())
+            let busyPct = Int((busyFraction * 100).rounded())
+            return "\(quietPct)% quiet · \(mixedPct)% mixed · \(busyPct)% busy"
+        }
+
+        var headline: String {
+            switch score {
+            case ..<0.35: "Mostly bike paths & quiet streets"
+            case ..<0.55: "Mix of quiet streets and busier roads"
+            default: "More time on busier roads"
+            }
+        }
+    }
+
+    static func profile(for route: MapboxDirections.Route) -> Profile {
         var weighted = 0.0
+        var quietDistance = 0.0
+        var mixedDistance = 0.0
+        var busyDistance = 0.0
         var totalDistance = 0.0
 
         for leg in route.legs {
             for step in leg.steps {
                 let distance = step.distance
                 guard distance > 0 else { continue }
-                weighted += stress(for: step) * distance
+                let stepStress = stress(for: step)
+                weighted += stepStress * distance
                 totalDistance += distance
+
+                switch stepStress {
+                case ..<0.35: quietDistance += distance
+                case ..<0.55: mixedDistance += distance
+                default: busyDistance += distance
+                }
             }
         }
 
-        guard totalDistance > 0 else { return 0 }
-        return min(1, max(0, weighted / totalDistance))
+        guard totalDistance > 0 else {
+            return Profile(score: 0, quietFraction: 1, mixedFraction: 0, busyFraction: 0)
+        }
+
+        return Profile(
+            score: min(1, max(0, weighted / totalDistance)),
+            quietFraction: quietDistance / totalDistance,
+            mixedFraction: mixedDistance / totalDistance,
+            busyFraction: busyDistance / totalDistance
+        )
     }
 
     private static func stress(for step: RouteStep) -> Double {

@@ -30,7 +30,12 @@ struct NavigationSessionView: UIViewControllerRepresentable {
         viewController.delegate = context.coordinator
         bottomBanner.navigationViewController = viewController
 
-        addMediaPlayerBar(to: viewController)
+        // Don't touch `viewController.view` here — loading it starts active guidance before
+        // the fullScreenCover has presented (Mapbox documents this as a footgun). Install
+        // the Now Playing bar on the next run loop once the VC is in the hierarchy.
+        DispatchQueue.main.async {
+            self.addMediaPlayerBar(to: viewController)
+        }
         return viewController
     }
 
