@@ -25,14 +25,18 @@ final class MediaPlayerManager {
             object: player,
             queue: .main
         ) { [weak self] _ in
-            self?.refresh()
+            Task { @MainActor in
+                self?.refresh()
+            }
         }
         playbackStateObserver = center.addObserver(
             forName: .MPMusicPlayerControllerPlaybackStateDidChange,
             object: player,
             queue: .main
         ) { [weak self] _ in
-            self?.refresh()
+            Task { @MainActor in
+                self?.refresh()
+            }
         }
         refresh()
     }
