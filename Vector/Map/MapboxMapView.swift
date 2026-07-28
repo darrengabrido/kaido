@@ -195,6 +195,8 @@ struct MapboxMapView: View {
                 } label: {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundStyle(.secondary)
+                        .frame(width: 32, height: 32)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }
@@ -250,6 +252,10 @@ struct MapboxMapView: View {
                 }
             }
         }
+        // Without this, taps in the gaps between rows fall through to the Mapbox map
+        // underneath instead of being absorbed by this panel — same bug as the route
+        // planner's control panel (see its `.contentShape` note).
+        .contentShape(Rectangle())
         .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 16))
     }
 
@@ -281,6 +287,8 @@ struct MapboxMapView: View {
                 } label: {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundStyle(.secondary)
+                        .frame(width: 32, height: 32)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }
