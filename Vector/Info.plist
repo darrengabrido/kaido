@@ -20,6 +20,8 @@
 	<string>1</string>
 	<key>MBXAccessToken</key>
 	<string>$(MAPBOX_ACCESS_TOKEN)</string>
+	<key>NSAppleMusicUsageDescription</key>
+	<string>Vector shows what's playing and lets you control playback from the map so you don't have to leave the app.</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>Vector connects to your bike over Bluetooth to show live speed and battery data.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>

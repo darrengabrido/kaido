@@ -13,6 +13,7 @@ struct MapboxMapView: View {
     @State private var showBikeLanes = true
     @State private var searchViewModel = MapSearchViewModel()
     @State private var navigationViewModel = NavigationViewModel()
+    @State private var mediaPlayerManager = MediaPlayerManager()
     @State private var isPresentingNavigation = false
     @FocusState private var isSearchFocused: Bool
 
@@ -142,6 +143,10 @@ struct MapboxMapView: View {
 
                 if let destination = searchViewModel.selectedDestination {
                     destinationCard(destination)
+                }
+
+                if mediaPlayerManager.hasNowPlayingItem {
+                    MediaPlayerBar(manager: mediaPlayerManager)
                 }
             }
             .padding(.top, 8)
