@@ -10,6 +10,7 @@ struct BikeConnectionView: View {
         NavigationStack {
             List {
                 statusSection
+                debugSection
                 if bleManager.telemetry.isConnected {
                     telemetrySection
                 } else {
@@ -42,6 +43,28 @@ struct BikeConnectionView: View {
             }
         } header: {
             Text("Status")
+        }
+    }
+
+    /// Only worth surfacing once there's something to look at — otherwise it's a dead link before
+    /// the first connection attempt.
+    @ViewBuilder
+    private var debugSection: some View {
+        if !bleManager.discoveredCharacteristics.isEmpty {
+            Section {
+                NavigationLink {
+                    BikeDebugView()
+                } label: {
+                    HStack {
+                        Text("Bike Debug")
+                        Spacer()
+                        Text("\(bleManager.discoveredCharacteristics.count) characteristics")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            } footer: {
+                Text("Live service and characteristic data from the connected bike — useful for figuring out what a proprietary BLE profile actually reports.")
+            }
         }
     }
 
