@@ -27,6 +27,15 @@ struct MediaPlayerBar: View {
             Spacer(minLength: 8)
 
             Button {
+                manager.skipToPrevious()
+            } label: {
+                Image(systemName: "backward.fill")
+                    .font(.system(size: 17))
+                    .frame(width: 32, height: 32)
+            }
+            .buttonStyle(.plain)
+
+            Button {
                 manager.togglePlayPause()
             } label: {
                 Image(systemName: manager.isPlaying ? "pause.fill" : "play.fill")

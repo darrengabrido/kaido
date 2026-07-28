@@ -50,6 +50,10 @@ final class MediaPlayerManager {
         refresh()
     }
 
+    func skipToPrevious() {
+        player.skipToPreviousItem()
+    }
+
     func skipToNext() {
         player.skipToNextItem()
     }
