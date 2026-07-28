@@ -100,7 +100,7 @@ struct RoutePlannerView: View {
             HStack {
                 Text(formattedDistance)
                     .font(.headline)
-                    .foregroundStyle(viewModel.waypoints.count > 1 ? Color.routeTeal : .secondary)
+                    .foregroundStyle(viewModel.waypoints.count > 1 ? Color.vectorDim : .secondary)
                 Spacer()
                 if viewModel.isMatching {
                     ProgressView()
@@ -108,7 +108,7 @@ struct RoutePlannerView: View {
             }
 
             Toggle("Bike Lanes", isOn: $showBikeLanes)
-                .tint(.routeTeal)
+                .tint(.vectorDim)
 
             if showBikeLanes {
                 BikeLaneLegend(showsBackground: false)

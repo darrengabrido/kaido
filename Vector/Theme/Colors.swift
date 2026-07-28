@@ -1,41 +1,68 @@
 import SwiftUI
 
+// "Instrument" — a near-monochrome palette in the spirit of a high-end bike computer.
+//
+// The thesis: neutrals carry the screen, and colour is spent sparingly enough that it means
+// something when it appears. Data is rendered in warm off-white and separated by size and weight
+// rather than hue; violet survives in exactly one job — your route and the controls you touch.
+//
+// Three layers, and they don't borrow from each other:
+//
+//   Neutrals — the ground and nearly all data. Warm off-white and warm near-black, never pure
+//              #FFF/#000, which is most of what separates "premium" from "default".
+//   Accent   — one. Violet means "this is your route, or this is yours to touch."
+//   Status   — muted sage / brass / clay. Serious rather than alarming, and never used to label a
+//              quantity.
+//
+// The app is pinned to `.preferredColorScheme(.dark)`, so these are tuned for dark only.
 extension Color {
-    // MARK: Brand
+    // MARK: Neutrals
 
-    /// The primary brand accent — interactive controls, primary CTAs, and the global tint.
-    static let vectorViolet = Color(red: 0x7B / 255, green: 0x4D / 255, blue: 0xE0 / 255)
+    /// The ground — a warm-tinted near-black. Pure black reads flat and cheap under glass, and
+    /// gives the material nothing to refract.
+    static let vectorMidnight = Color(red: 0x0A / 255, green: 0x0A / 255, blue: 0x0C / 255)
 
-    /// Brighter variant of `vectorViolet` for the route line drawn on the map — Mapbox's night light
-    /// preset dims custom layer colors, so the route needs extra brightness to stay visible against it.
-    static let vectorVioletOnMap = Color(red: 0xA4 / 255, green: 0x7D / 255, blue: 0xFF / 255)
+    /// Primary data and text — a warm off-white. This is the hero: speed, time, street names.
+    static let vectorInk = Color(red: 0xF2 / 255, green: 0xF0 / 255, blue: 0xEC / 255)
 
-    /// Deep indigo used in brand backdrops (e.g. the landing screen's aurora gradient).
-    static let vectorIndigo = Color(red: 0x2A / 255, green: 0x1E / 255, blue: 0x66 / 255)
+    /// Secondary data, labels, and units. Carries everything that supports the hero number.
+    static let vectorDim = Color(red: 0x8B / 255, green: 0x8A / 255, blue: 0x93 / 255)
 
-    /// Violet-tinted near-black base behind brand gradients.
-    static let vectorMidnight = Color(red: 0x08 / 255, green: 0x07 / 255, blue: 0x12 / 255)
+    /// Deep indigo behind brand gradients (the landing screen's aurora).
+    static let vectorIndigo = Color(red: 0x2A / 255, green: 0x22 / 255, blue: 0x66 / 255)
 
-    // MARK: Data & status
+    // MARK: Accent
 
-    /// Distance — used consistently for distance stats and the Routes tab.
-    static let routeTeal = Color(red: 0x1F / 255, green: 0xB8 / 255, blue: 0x8A / 255)
+    /// The single accent — the route line, the maneuver arrow, interactive controls, global tint.
+    /// Softened from the old violet so it reads as pigment rather than plastic.
+    static let vectorViolet = Color(red: 0x9B / 255, green: 0x8C / 255, blue: 0xFF / 255)
 
-    /// Bike lane / dedicated cycle path infrastructure drawn on the map — brighter than `routeTeal`
-    /// since Mapbox's night light preset dims custom layer colors along with everything else on the
-    /// canvas. Deliberately distinct from `vectorViolet` (the drawn/ridden route line itself), so a
-    /// route stays legible against the bike lanes it runs along instead of blending into them.
-    static let routeTealOnMap = Color(red: 0x3C / 255, green: 0xE6 / 255, blue: 0xB4 / 255)
+    /// Brighter accent for the route drawn on the map — Mapbox's night preset dims custom layers,
+    /// and translucent glass lightens what sits on it. Use this variant on *any* non-solid surface,
+    /// not just the map: the base violet only clears ~3.4:1 over glass, this clears ~7.7:1.
+    static let vectorVioletOnMap = Color(red: 0xB9 / 255, green: 0xAE / 255, blue: 0xFF / 255)
 
-    /// Physical effort — elevation climb, cadence, power.
-    static let effortCoral = Color(red: 0xF0 / 255, green: 0x66 / 255, blue: 0x3A / 255)
+    // MARK: Status
+    //
+    // State, not category — battery level, hardware connection, warnings. Muted on purpose: an
+    // alert should read as serious, not as a toy. The only greens/yellows/reds in the system.
 
-    /// Time and speed.
-    static let paceBlue = Color(red: 0x4A / 255, green: 0x9E / 255, blue: 0xF0 / 255)
+    /// Healthy — connected hardware, a live feed, comfortable battery.
+    static let statusGood = Color(red: 0x7F / 255, green: 0xB8 / 255, blue: 0x8A / 255)
 
-    /// An active/live state — connected hardware, a live telemetry feed. (Primary CTAs use `vectorViolet`.)
-    static let goGreen = Color(red: 0x5E / 255, green: 0xB8 / 255, blue: 0x2E / 255)
+    /// Needs attention soon — battery getting low.
+    static let statusCaution = Color(red: 0xD9 / 255, green: 0xA4 / 255, blue: 0x41 / 255)
 
-    /// Favorited routes.
-    static let favoriteAmber = Color(red: 0xF0 / 255, green: 0xA8 / 255, blue: 0x2E / 255)
+    /// Critical — nearly flat, dropped connection, the End action.
+    static let statusCritical = Color(red: 0xC9 / 255, green: 0x64 / 255, blue: 0x5E / 255)
+
+    // MARK: Map canvas
+    //
+    // The map is the one place restraint has to yield: a line drawn over cartography needs enough
+    // chroma to be read as infrastructure rather than as another road.
+
+    /// Bike lanes and dedicated cycle paths drawn on the map. A muted sage-teal — distinct from the
+    /// violet route running along them, without the neon of the old value.
+    static let routeTealOnMap = Color(red: 0x6F / 255, green: 0xB3 / 255, blue: 0xA1 / 255)
+
 }

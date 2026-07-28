@@ -135,9 +135,11 @@ private struct AuroraBackground: View {
                     [1.0, 1.0]
                 ],
                 colors: [
+                    // Monochromatic violet aurora — Instrument keeps the brand backdrop a single
+                    // hue story rather than mixing in a second accent.
                     .vectorMidnight, .vectorIndigo, .vectorMidnight,
-                    .vectorViolet, .vectorIndigo, .routeTeal,
-                    .vectorMidnight, .routeTeal.opacity(0.6), .vectorMidnight
+                    .vectorViolet, .vectorIndigo, .vectorVioletOnMap,
+                    .vectorMidnight, .vectorVioletOnMap.opacity(0.6), .vectorMidnight
                 ]
             )
         }

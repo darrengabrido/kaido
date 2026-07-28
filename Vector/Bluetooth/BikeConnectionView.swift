@@ -3,15 +3,14 @@ import SwiftData
 
 struct BikeConnectionView: View {
     @Environment(BikeBLEManager.self) private var bleManager
-    @Environment(AuthState.self) private var authState
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \BikeProfile.lastConnectedAt, order: .reverse) private var savedProfiles: [BikeProfile]
 
     var body: some View {
         NavigationStack {
             List {
-                accountSection
                 statusSection
+                debugSection
                 if bleManager.telemetry.isConnected {
                     telemetrySection
                 } else {
@@ -27,30 +26,6 @@ struct BikeConnectionView: View {
     }
 
     // MARK: - Sections
-
-    private var accountSection: some View {
-        Section {
-            HStack {
-                Image(systemName: authState.isAuthenticated ? "person.crop.circle.fill" : "person.crop.circle")
-                    .foregroundStyle(authState.isAuthenticated ? Color.vectorViolet : .secondary)
-                Text(authState.user?.email ?? "Browsing as Guest")
-                    .lineLimit(1)
-                Spacer()
-                if authState.isAuthenticated {
-                    Button("Sign Out", role: .destructive) {
-                        Task { try? await authState.signOut() }
-                    }
-                } else {
-                    Button("Sign In") {
-                        authState.exitGuestMode()
-                    }
-                    .tint(.vectorViolet)
-                }
-            }
-        } header: {
-            Text("Account")
-        }
-    }
 
     private var statusSection: some View {
         Section {
@@ -71,18 +46,40 @@ struct BikeConnectionView: View {
         }
     }
 
+    /// Only worth surfacing once there's something to look at — otherwise it's a dead link before
+    /// the first connection attempt.
+    @ViewBuilder
+    private var debugSection: some View {
+        if !bleManager.discoveredCharacteristics.isEmpty {
+            Section {
+                NavigationLink {
+                    BikeDebugView()
+                } label: {
+                    HStack {
+                        Text("Bike Debug")
+                        Spacer()
+                        Text("\(bleManager.discoveredCharacteristics.count) characteristics")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            } footer: {
+                Text("Live service and characteristic data from the connected bike — useful for figuring out what a proprietary BLE profile actually reports.")
+            }
+        }
+    }
+
     private var telemetrySection: some View {
         Section {
             TelemetryRow(label: "Speed",
                          value: String(format: "%.1f km/h", bleManager.telemetry.speedKph),
-                         color: .paceBlue)
+                         color: .vectorInk)
             TelemetryRow(label: "Cadence",
                          value: String(format: "%.0f RPM", bleManager.telemetry.cadenceRpm),
-                         color: .effortCoral)
+                         color: .vectorDim)
             if let pct = bleManager.telemetry.batteryPercent {
                 TelemetryRow(label: "Battery",
                              value: "\(pct)%",
-                             color: pct <= 20 ? .effortCoral : pct <= 40 ? .favoriteAmber : .routeTeal)
+                             color: pct <= 20 ? .statusCritical : pct <= 40 ? .statusCaution : .statusGood)
             }
         } header: {
             Text("Live Telemetry")
@@ -112,7 +109,7 @@ struct BikeConnectionView: View {
                     } label: {
                         HStack {
                             Image(systemName: "bicycle")
-                                .foregroundStyle(Color.routeTeal)
+                                .foregroundStyle(Color.vectorDim)
                             Text(peripheral.name)
                             Spacer()
                             if bleManager.scanState == .connecting
@@ -139,7 +136,7 @@ struct BikeConnectionView: View {
                 } label: {
                     HStack {
                         Image(systemName: "arrow.clockwise.circle")
-                            .foregroundStyle(Color.paceBlue)
+                            .foregroundStyle(Color.vectorInk)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(profile.name)
                             if let date = profile.lastConnectedAt {
@@ -159,11 +156,11 @@ struct BikeConnectionView: View {
 
     private var statusColor: Color {
         switch bleManager.scanState {
-        case .connected:            return .goGreen
-        case .connecting:           return .favoriteAmber
-        case .scanning:             return .paceBlue
+        case .connected:            return .statusGood
+        case .connecting:           return .statusCaution
+        case .scanning:             return .vectorDim
         case .idle:                 return .secondary
-        case .bluetoothUnavailable: return .effortCoral
+        case .bluetoothUnavailable: return .statusCritical
         }
     }
 }

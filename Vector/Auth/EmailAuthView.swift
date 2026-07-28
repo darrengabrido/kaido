@@ -51,7 +51,7 @@ struct EmailAuthView: View {
                     Label("Check your email to confirm your account, then sign in.",
                           systemImage: "checkmark.circle.fill")
                         .font(.caption)
-                        .foregroundStyle(Color.routeTeal)
+                        .foregroundStyle(Color.vectorDim)
                 }
 
                 Button {

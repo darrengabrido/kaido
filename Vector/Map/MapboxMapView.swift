@@ -9,6 +9,8 @@ extension MapStyle {
 struct MapboxMapView: View {
     let locationManager: LocationManager
 
+    @Environment(BikeBLEManager.self) private var bleManager
+
     @State private var viewport: Viewport = .followPuck(zoom: 15, bearing: .heading, pitch: 0)
     @State private var showBikeLanes = true
     @State private var searchViewModel = MapSearchViewModel()
@@ -58,7 +60,9 @@ struct MapboxMapView: View {
                 if let destination = searchViewModel.selectedDestination {
                     CircleAnnotationGroup([destination]) { result in
                         CircleAnnotation(centerCoordinate: result.coordinate)
-                            .circleColor(UIColor(Color.effortCoral))
+                            // The destination pin is the one marker that must not recede into the
+                            // neutrals — clay reads warm against the violet route and sage lanes.
+                            .circleColor(UIColor(Color.statusCritical))
                             .circleRadius(8)
                             .circleStrokeColor(.white)
                             .circleStrokeWidth(2)
@@ -71,7 +75,7 @@ struct MapboxMapView: View {
                     navigationViewModel.routeOptions.filter { !$0.isMain && $0.coordinates.count > 1 }
                 ) { option in
                     PolylineAnnotation(lineCoordinates: option.coordinates)
-                        .lineColor(UIColor(Color.paceBlue))
+                        .lineColor(UIColor(Color.vectorDim))
                         .lineWidth(3)
                 }
                 .lineOpacity(0.55)
@@ -129,11 +133,12 @@ struct MapboxMapView: View {
                 } label: {
                     Image(systemName: "bicycle")
                         .font(.system(size: 16, weight: .medium))
-                        .foregroundStyle(showBikeLanes ? Color.routeTeal : Color.secondary)
+                        .foregroundStyle(showBikeLanes ? Color.vectorDim : Color.secondary)
                         .frame(width: 44, height: 44)
                 }
                 .glassEffect(.regular, in: Circle())
                 .frame(maxWidth: .infinity, alignment: .trailing)
+                .accessibilityLabel(showBikeLanes ? "Hide bike lanes" : "Show bike lanes")
 
                 if let destination = searchViewModel.selectedDestination {
                     destinationCard(destination)
@@ -163,7 +168,10 @@ struct MapboxMapView: View {
         }
         .fullScreenCover(isPresented: $isPresentingNavigation) {
             if let navigationRoutes = navigationViewModel.navigationRoutes {
-                NavigationSessionView(navigationRoutes: navigationRoutes) { _ in
+                NavigationSessionView(
+                    navigationRoutes: navigationRoutes,
+                    telemetry: bleManager.telemetry
+                ) { _ in
                     isPresentingNavigation = false
                     navigationViewModel.clear()
                     clearDestination()
@@ -187,6 +195,8 @@ struct MapboxMapView: View {
                 } label: {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundStyle(.secondary)
+                        .frame(width: 32, height: 32)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }
@@ -205,7 +215,7 @@ struct MapboxMapView: View {
                     HStack(spacing: 12) {
                         Image(systemName: result.iconName)
                             .font(.system(size: 15))
-                            .foregroundStyle(result.isPOI ? Color.routeTeal : Color.secondary)
+                            .foregroundStyle(result.isPOI ? Color.vectorDim : Color.secondary)
                             .frame(width: 24, height: 24)
 
                         VStack(alignment: .leading, spacing: 2) {
@@ -215,7 +225,7 @@ struct MapboxMapView: View {
                             HStack(spacing: 4) {
                                 if let category = result.category {
                                     Text(category)
-                                        .foregroundStyle(Color.routeTeal)
+                                        .foregroundStyle(Color.vectorDim)
                                     if result.placeFormatted != nil {
                                         Text("·").foregroundStyle(.secondary)
                                     }
@@ -242,6 +252,10 @@ struct MapboxMapView: View {
                 }
             }
         }
+        // Without this, taps in the gaps between rows fall through to the Mapbox map
+        // underneath instead of being absorbed by this panel — same bug as the route
+        // planner's control panel (see its `.contentShape` note).
+        .contentShape(Rectangle())
         .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 16))
     }
 
@@ -250,7 +264,7 @@ struct MapboxMapView: View {
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: destination.iconName)
                     .font(.system(size: 18))
-                    .foregroundStyle(destination.isPOI ? Color.routeTeal : Color.secondary)
+                    .foregroundStyle(destination.isPOI ? Color.vectorDim : Color.secondary)
                     .frame(width: 28, height: 28)
 
                 VStack(alignment: .leading, spacing: 2) {
@@ -259,7 +273,7 @@ struct MapboxMapView: View {
                     if let category = destination.category {
                         Text(category)
                             .font(.caption)
-                            .foregroundStyle(Color.routeTeal)
+                            .foregroundStyle(Color.vectorDim)
                     }
                     if let placeFormatted = destination.placeFormatted {
                         Text(placeFormatted)
@@ -273,6 +287,8 @@ struct MapboxMapView: View {
                 } label: {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundStyle(.secondary)
+                        .frame(width: 32, height: 32)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }
@@ -324,7 +340,8 @@ struct MapboxMapView: View {
                 } label: {
                     HStack(spacing: 8) {
                         Circle()
-                            .fill(option.isMain ? Color.vectorViolet : Color.paceBlue)
+                            // Alternates recede to the same dim used for their map polylines.
+                            .fill(option.isMain ? Color.vectorViolet : Color.vectorDim)
                             .frame(width: 8, height: 8)
                         Text(formattedDuration(option.expectedTravelTime))
                             .font(.subheadline.weight(option.isMain ? .semibold : .regular))
