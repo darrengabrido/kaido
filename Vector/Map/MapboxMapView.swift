@@ -299,6 +299,8 @@ struct MapboxMapView: View {
                     .foregroundStyle(.red)
             }
 
+            routingPreferenceToggle
+
             if navigationViewModel.navigationRoutes != nil {
                 routeOptionsList
             }
@@ -329,9 +331,24 @@ struct MapboxMapView: View {
         .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 20))
     }
 
+    /// Calm leans on dedicated lanes and quieter streets; Fast picks the quickest alternative.
+    /// Lives next to the alternatives list so the preference is visible while comparing routes.
+    private var routingPreferenceToggle: some View {
+        Picker("Routing style", selection: $navigationViewModel.preference) {
+            ForEach(RoutingPreference.allCases) { preference in
+                Label(preference.title, systemImage: preference.systemImage)
+                    .tag(preference)
+                    .accessibilityLabel(preference.accessibilityLabel)
+            }
+        }
+        .pickerStyle(.segmented)
+        .disabled(navigationViewModel.isRequestingRoute)
+        .accessibilityHint("Changes which route Vector recommends among alternatives")
+    }
+
     /// Recommended routes for the currently selected destination — tap one to make it the
     /// route "Start Navigation" will launch. Mirrors what's drawn on the map: the picked
-    /// route is violet and full-strength, the rest are dim paceBlue.
+    /// route is violet and full-strength, the rest are dim.
     private var routeOptionsList: some View {
         VStack(alignment: .leading, spacing: 6) {
             ForEach(navigationViewModel.routeOptions) { option in
@@ -351,6 +368,14 @@ struct MapboxMapView: View {
                         Text(formattedDistance(option.distanceMeters))
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
+                        if navigationViewModel.preference == .calm {
+                            Text("·")
+                                .foregroundStyle(.secondary)
+                            Label(calmLabel(for: option.stressScore), systemImage: "leaf.fill")
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(calmColor(for: option.stressScore))
+                                .labelStyle(.titleAndIcon)
+                        }
                         Spacer()
                         if option.isMain {
                             Image(systemName: "checkmark.circle.fill")
@@ -365,6 +390,22 @@ struct MapboxMapView: View {
                 }
                 .buttonStyle(.plain)
             }
+        }
+    }
+
+    private func calmLabel(for stress: Double) -> String {
+        switch stress {
+        case ..<0.35: "Quiet"
+        case ..<0.55: "Mixed"
+        default: "Busy"
+        }
+    }
+
+    private func calmColor(for stress: Double) -> Color {
+        switch stress {
+        case ..<0.35: .statusGood
+        case ..<0.55: .statusCaution
+        default: .statusCritical
         }
     }
 

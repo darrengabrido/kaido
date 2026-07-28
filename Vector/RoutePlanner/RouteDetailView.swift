@@ -110,6 +110,16 @@ struct RouteDetailView: View {
                         .foregroundStyle(.red)
                 }
 
+                Picker("Routing style", selection: $navigationViewModel.preference) {
+                    ForEach(RoutingPreference.allCases) { preference in
+                        Label(preference.title, systemImage: preference.systemImage)
+                            .tag(preference)
+                            .accessibilityLabel(preference.accessibilityLabel)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .disabled(navigationViewModel.isRequestingRoute)
+
                 Button {
                     Task {
                         await navigationViewModel.requestRoutes(waypointCoordinates: coordinates)
