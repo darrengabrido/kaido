@@ -52,17 +52,12 @@ struct RoutePlannerView: View {
                     }
 
                     if viewModel.lineCoordinates.count > 1 {
-                        PolylineAnnotationGroup {
-                            PolylineAnnotation(lineCoordinates: viewModel.lineCoordinates)
-                                .lineColor(UIColor(Color.routeTealOnMap))
-                                .lineWidth(4)
-                        }
-                        .lineEmissiveStrength(1)
+                        RouteGlowPolyline(coordinates: viewModel.lineCoordinates)
                     }
 
                     CircleAnnotationGroup(viewModel.waypoints) { waypoint in
                         CircleAnnotation(centerCoordinate: waypoint.coordinate)
-                            .circleColor(UIColor(Color.routeTealOnMap))
+                            .circleColor(UIColor(Color.vectorVioletOnMap))
                             .circleRadius(6)
                             .circleStrokeColor(.white)
                             .circleStrokeWidth(2)

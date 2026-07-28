@@ -76,14 +76,9 @@ struct MapboxMapView: View {
                 }
                 .lineOpacity(0.55)
 
-                PolylineAnnotationGroup(
-                    navigationViewModel.routeOptions.filter { $0.isMain && $0.coordinates.count > 1 }
-                ) { option in
-                    PolylineAnnotation(lineCoordinates: option.coordinates)
-                        .lineColor(UIColor(Color.routeTealOnMap))
-                        .lineWidth(5)
+                if let mainRoute = navigationViewModel.routeOptions.first(where: { $0.isMain && $0.coordinates.count > 1 }) {
+                    RouteGlowPolyline(coordinates: mainRoute.coordinates)
                 }
-                .lineEmissiveStrength(1)
             }
             .mapStyle(.vectorNight)
             .ornamentOptions(OrnamentOptions(
@@ -320,7 +315,7 @@ struct MapboxMapView: View {
 
     /// Recommended routes for the currently selected destination — tap one to make it the
     /// route "Start Navigation" will launch. Mirrors what's drawn on the map: the picked
-    /// route is teal and full-strength, the rest are dim paceBlue.
+    /// route is violet and full-strength, the rest are dim paceBlue.
     private var routeOptionsList: some View {
         VStack(alignment: .leading, spacing: 6) {
             ForEach(navigationViewModel.routeOptions) { option in
@@ -329,7 +324,7 @@ struct MapboxMapView: View {
                 } label: {
                     HStack(spacing: 8) {
                         Circle()
-                            .fill(option.isMain ? Color.routeTeal : Color.paceBlue)
+                            .fill(option.isMain ? Color.vectorViolet : Color.paceBlue)
                             .frame(width: 8, height: 8)
                         Text(formattedDuration(option.expectedTravelTime))
                             .font(.subheadline.weight(option.isMain ? .semibold : .regular))
@@ -342,12 +337,12 @@ struct MapboxMapView: View {
                         Spacer()
                         if option.isMain {
                             Image(systemName: "checkmark.circle.fill")
-                                .foregroundStyle(Color.routeTeal)
+                                .foregroundStyle(Color.vectorViolet)
                         }
                     }
                     .padding(.vertical, 6)
                     .padding(.horizontal, 10)
-                    .background(option.isMain ? Color.routeTeal.opacity(0.14) : Color.clear)
+                    .background(option.isMain ? Color.vectorViolet.opacity(0.14) : Color.clear)
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                     .contentShape(Rectangle())
                 }
