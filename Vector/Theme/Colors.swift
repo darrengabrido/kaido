@@ -14,12 +14,13 @@ extension Color {
 
     // MARK: Data & status
 
-    /// Distance and the route path itself — used consistently for distance stats and the Routes tab.
+    /// Distance — used consistently for distance stats and the Routes tab.
     static let routeTeal = Color(red: 0x1F / 255, green: 0xB8 / 255, blue: 0x8A / 255)
 
-    /// Brighter variant of `routeTeal` for lines/markers drawn directly on the map — Mapbox's night light
-    /// preset dims custom layer colors along with everything else on the canvas, so annotations need extra
-    /// brightness to still read clearly against it.
+    /// Bike lane / dedicated cycle path infrastructure drawn on the map — brighter than `routeTeal`
+    /// since Mapbox's night light preset dims custom layer colors along with everything else on the
+    /// canvas. Deliberately distinct from `vectorViolet` (the drawn/ridden route line itself), so a
+    /// route stays legible against the bike lanes it runs along instead of blending into them.
     static let routeTealOnMap = Color(red: 0x3C / 255, green: 0xE6 / 255, blue: 0xB4 / 255)
 
     /// Physical effort — elevation climb, cadence, power.

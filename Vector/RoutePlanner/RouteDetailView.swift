@@ -10,6 +10,7 @@ struct RouteDetailView: View {
     @State private var viewport: Viewport
     @State private var navigationViewModel = NavigationViewModel()
     @State private var isPresentingNavigation = false
+    @State private var showBikeLanes = true
 
     init(route: Route) {
         self.route = route
@@ -34,17 +35,72 @@ struct RouteDetailView: View {
     var body: some View {
         ZStack(alignment: .bottom) {
             Map(viewport: $viewport) {
+                if showBikeLanes {
+                    VectorSource(id: "streets-v8")
+                        .url("mapbox://mapbox.mapbox-streets-v8")
+                    // On-street painted bike lane — drawn on the road's own centerline (bike_lane field),
+                    // dashed so it reads as "lane within the road" rather than a separate path.
+                    LineLayer(id: "bike-onstreet-lane", source: "streets-v8")
+                        .sourceLayer("road")
+                        .filter(Exp(.any) {
+                            Exp(.eq) { Exp(.get) { "bike_lane" }; "yes" }
+                            Exp(.eq) { Exp(.get) { "bike_lane" }; "left" }
+                            Exp(.eq) { Exp(.get) { "bike_lane" }; "right" }
+                            Exp(.eq) { Exp(.get) { "bike_lane" }; "both" }
+                        })
+                        .lineColor(StyleColor(UIColor(Color.routeTealOnMap)))
+                        .lineWidth(3.0)
+                        .lineOpacity(0.95)
+                        .lineEmissiveStrength(1)
+                        .lineCap(.butt)
+                        .lineJoin(.round)
+                        .lineDashArray([2, 2])
+                        .slot(.top)
+                    // Dedicated, physically-separated cycle path — solid and thicker
+                    LineLayer(id: "bike-dedicated-path", source: "streets-v8")
+                        .sourceLayer("road")
+                        .filter(Exp(.eq) { Exp(.get) { "type" }; "cycleway" })
+                        .lineColor(StyleColor(UIColor(Color.routeTealOnMap)))
+                        .lineWidth(4.5)
+                        .lineOpacity(1.0)
+                        .lineEmissiveStrength(1)
+                        .lineCap(.round)
+                        .lineJoin(.round)
+                        .slot(.top)
+                }
+
                 if coordinates.count > 1 {
+                    // Narrower than the bike lane layers above so their teal shows as a border
+                    // wherever the route runs along one, instead of fully covering it.
                     PolylineAnnotationGroup {
                         PolylineAnnotation(lineCoordinates: coordinates)
-                            .lineColor(UIColor(Color.routeTealOnMap))
-                            .lineWidth(4)
+                            .lineColor(UIColor(Color.vectorViolet))
+                            .lineWidth(3)
                     }
                     .lineEmissiveStrength(1)
                 }
             }
             .mapStyle(.vectorNight)
             .ignoresSafeArea()
+
+            VStack(alignment: .trailing, spacing: 8) {
+                Button {
+                    showBikeLanes.toggle()
+                } label: {
+                    Image(systemName: "bicycle")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundStyle(showBikeLanes ? Color.routeTeal : Color.secondary)
+                        .frame(width: 44, height: 44)
+                }
+                .glassEffect(.regular, in: Circle())
+
+                if showBikeLanes {
+                    BikeLaneLegend()
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+            .padding(.top, 12)
+            .padding(.trailing, 16)
 
             VStack(alignment: .leading, spacing: 12) {
                 Text(route.name)

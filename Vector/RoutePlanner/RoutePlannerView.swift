@@ -52,17 +52,19 @@ struct RoutePlannerView: View {
                     }
 
                     if viewModel.lineCoordinates.count > 1 {
+                        // Narrower than the bike lane layers above so their teal shows as a
+                        // border wherever the route runs along one, instead of covering it.
                         PolylineAnnotationGroup {
                             PolylineAnnotation(lineCoordinates: viewModel.lineCoordinates)
-                                .lineColor(UIColor(Color.routeTealOnMap))
-                                .lineWidth(4)
+                                .lineColor(UIColor(Color.vectorViolet))
+                                .lineWidth(3)
                         }
                         .lineEmissiveStrength(1)
                     }
 
                     CircleAnnotationGroup(viewModel.waypoints) { waypoint in
                         CircleAnnotation(centerCoordinate: waypoint.coordinate)
-                            .circleColor(UIColor(Color.routeTealOnMap))
+                            .circleColor(UIColor(Color.vectorViolet))
                             .circleRadius(6)
                             .circleStrokeColor(.white)
                             .circleStrokeWidth(2)
