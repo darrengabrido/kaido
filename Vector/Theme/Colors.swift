@@ -6,6 +6,10 @@ extension Color {
     /// The primary brand accent — interactive controls, primary CTAs, and the global tint.
     static let vectorViolet = Color(red: 0x7B / 255, green: 0x4D / 255, blue: 0xE0 / 255)
 
+    /// Brighter variant of `vectorViolet` for the route line drawn on the map — Mapbox's night light
+    /// preset dims custom layer colors, so the route needs extra brightness to stay visible against it.
+    static let vectorVioletOnMap = Color(red: 0xA4 / 255, green: 0x7D / 255, blue: 0xFF / 255)
+
     /// Deep indigo used in brand backdrops (e.g. the landing screen's aurora gradient).
     static let vectorIndigo = Color(red: 0x2A / 255, green: 0x1E / 255, blue: 0x66 / 255)
 

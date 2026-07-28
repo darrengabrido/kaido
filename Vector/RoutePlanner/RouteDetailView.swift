@@ -70,14 +70,7 @@ struct RouteDetailView: View {
                 }
 
                 if coordinates.count > 1 {
-                    // Narrower than the bike lane layers above so their teal shows as a border
-                    // wherever the route runs along one, instead of fully covering it.
-                    PolylineAnnotationGroup {
-                        PolylineAnnotation(lineCoordinates: coordinates)
-                            .lineColor(UIColor(Color.vectorViolet))
-                            .lineWidth(3)
-                    }
-                    .lineEmissiveStrength(1)
+                    RouteGlowPolyline(coordinates: coordinates)
                 }
             }
             .mapStyle(.vectorNight)

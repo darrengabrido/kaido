@@ -76,16 +76,9 @@ struct MapboxMapView: View {
                 }
                 .lineOpacity(0.55)
 
-                // Narrower than the bike lane layers above so their teal shows as a
-                // border wherever the route runs along one, instead of covering it.
-                PolylineAnnotationGroup(
-                    navigationViewModel.routeOptions.filter { $0.isMain && $0.coordinates.count > 1 }
-                ) { option in
-                    PolylineAnnotation(lineCoordinates: option.coordinates)
-                        .lineColor(UIColor(Color.vectorViolet))
-                        .lineWidth(3)
+                if let mainRoute = navigationViewModel.routeOptions.first(where: { $0.isMain && $0.coordinates.count > 1 }) {
+                    RouteGlowPolyline(coordinates: mainRoute.coordinates)
                 }
-                .lineEmissiveStrength(1)
             }
             .mapStyle(.vectorNight)
             .ornamentOptions(OrnamentOptions(
