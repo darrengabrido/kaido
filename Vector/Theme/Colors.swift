@@ -42,6 +42,12 @@ extension Color {
     /// not just the map: the base violet only clears ~3.4:1 over glass, this clears ~7.7:1.
     static let vectorVioletOnMap = Color(red: 0xB9 / 255, green: 0xAE / 255, blue: 0xFF / 255)
 
+    /// Distinct alternate-route colours. They are intentionally separate from the mint used for
+    /// bike infrastructure, so a rider can compare route choices without mistaking an alternate
+    /// for a bike lane.
+    static let routeBlueOnMap = Color(red: 0x70 / 255, green: 0xC6 / 255, blue: 0xFF / 255)
+    static let routeCoralOnMap = Color(red: 0xFF / 255, green: 0xAF / 255, blue: 0x82 / 255)
+
     // MARK: Status
     //
     // State, not category — battery level, hardware connection, warnings. Muted on purpose: an
@@ -61,8 +67,9 @@ extension Color {
     // The map is the one place restraint has to yield: a line drawn over cartography needs enough
     // chroma to be read as infrastructure rather than as another road.
 
-    /// Bike lanes and dedicated cycle paths drawn on the map. A muted sage-teal — distinct from the
-    /// violet route running along them, without the neon of the old value.
-    static let routeTealOnMap = Color(red: 0x6F / 255, green: 0xB3 / 255, blue: 0xA1 / 255)
+    /// Bike lanes and dedicated cycle paths on the night map. A luminous mint that sits
+    /// beside the violet route without competing — bright enough to read over asphalt and
+    /// the route glow, cool enough to feel like infrastructure rather than another accent.
+    static let routeTealOnMap = Color(red: 0x6E / 255, green: 0xE0 / 255, blue: 0xC4 / 255)
 
 }

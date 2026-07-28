@@ -24,37 +24,7 @@ struct MapboxMapView: View {
                 Puck2D(bearing: .heading)
 
                 if showBikeLanes {
-                    VectorSource(id: "streets-v8")
-                        .url("mapbox://mapbox.mapbox-streets-v8")
-                    // On-street painted bike lane — drawn on the road's own centerline (bike_lane field),
-                    // dashed so it reads as "lane within the road" rather than a separate path.
-                    LineLayer(id: "bike-onstreet-lane", source: "streets-v8")
-                        .sourceLayer("road")
-                        .filter(Exp(.any) {
-                            Exp(.eq) { Exp(.get) { "bike_lane" }; "yes" }
-                            Exp(.eq) { Exp(.get) { "bike_lane" }; "left" }
-                            Exp(.eq) { Exp(.get) { "bike_lane" }; "right" }
-                            Exp(.eq) { Exp(.get) { "bike_lane" }; "both" }
-                        })
-                        .lineColor(StyleColor(UIColor(Color.routeTealOnMap)))
-                        .lineWidth(3.0)
-                        .lineOpacity(0.95)
-                        .lineEmissiveStrength(1)
-                        .lineCap(.butt)
-                        .lineJoin(.round)
-                        .lineDashArray([2, 2])
-                        .slot(.top)
-                    // Dedicated, physically-separated cycle path — solid and thicker
-                    LineLayer(id: "bike-dedicated-path", source: "streets-v8")
-                        .sourceLayer("road")
-                        .filter(Exp(.eq) { Exp(.get) { "type" }; "cycleway" })
-                        .lineColor(StyleColor(UIColor(Color.routeTealOnMap)))
-                        .lineWidth(4.5)
-                        .lineOpacity(1.0)
-                        .lineEmissiveStrength(1)
-                        .lineCap(.round)
-                        .lineJoin(.round)
-                        .slot(.top)
+                    BikeLaneMapLayers()
                 }
 
                 if let destination = searchViewModel.selectedDestination {
@@ -70,15 +40,17 @@ struct MapboxMapView: View {
                     .circleEmissiveStrength(1)
                 }
 
-                // Draw alternates first (dim, thin) so the main/selected route always paints on top.
+                // Draw alternates first. Their distinct colours keep choices legible, while a
+                // narrow, translucent stroke makes the selected violet route the visual focus.
                 PolylineAnnotationGroup(
                     navigationViewModel.routeOptions.filter { !$0.isMain && $0.coordinates.count > 1 }
                 ) { option in
                     PolylineAnnotation(lineCoordinates: option.coordinates)
-                        .lineColor(UIColor(Color.vectorDim))
-                        .lineWidth(3)
+                        .lineColor(UIColor(routeColor(for: option)))
+                        .lineWidth(2.5)
                 }
-                .lineOpacity(0.55)
+                .lineOpacity(0.38)
+                .lineEmissiveStrength(0.6)
 
                 if let mainRoute = navigationViewModel.routeOptions.first(where: { $0.isMain && $0.coordinates.count > 1 }) {
                     RouteGlowPolyline(coordinates: mainRoute.coordinates)
@@ -373,8 +345,7 @@ struct MapboxMapView: View {
                 } label: {
                     HStack(alignment: .top, spacing: 8) {
                         Circle()
-                            // Alternates recede to the same dim used for their map polylines.
-                            .fill(option.isMain ? Color.vectorViolet : Color.vectorDim)
+                            .fill(routeColor(for: option))
                             .frame(width: 8, height: 8)
                             .padding(.top, 6)
 
@@ -421,6 +392,20 @@ struct MapboxMapView: View {
         case ..<0.35: .statusGood
         case ..<0.55: .statusCaution
         default: .statusCritical
+        }
+    }
+
+    /// Violet remains the active route. Mapbox returns up to two cycling alternatives, which
+    /// receive blue and coral respectively — deliberately distinct from mint bike lanes.
+    private func routeColor(for option: RouteOption) -> Color {
+        guard !option.isMain else { return .vectorViolet }
+        let alternateIndex = navigationViewModel.routeOptions
+            .filter { !$0.isMain }
+            .firstIndex { $0.id == option.id } ?? 0
+
+        switch alternateIndex % 2 {
+        case 0: return .routeBlueOnMap
+        default: return .routeCoralOnMap
         }
     }
 
