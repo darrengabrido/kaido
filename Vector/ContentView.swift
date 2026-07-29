@@ -2,6 +2,7 @@ import SwiftUI
 import SwiftData
 
 struct ContentView: View {
+    @Environment(\.modelContext) private var modelContext
     @State private var locationManager = LocationManager()
 
     var body: some View {
@@ -30,6 +31,7 @@ struct ContentView: View {
         }
         .task {
             locationManager.requestWhenInUseAuthorization()
+            BikeProfileStore.ensureActiveProfile(in: modelContext)
         }
     }
 }

@@ -8,6 +8,7 @@ enum VectorModelContainer {
             Waypoint.self,
             Ride.self,
             BikeProfile.self,
+            SavedPlace.self,
         ])
 
         let configuration = ModelConfiguration(

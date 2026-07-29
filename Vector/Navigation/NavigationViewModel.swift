@@ -6,7 +6,10 @@ import MapboxNavigationCore
 struct RouteOption: Identifiable {
     let id: String
     let distanceMeters: Double
+    /// Native Mapbox cycling duration retained for ranking and navigation internals.
     let expectedTravelTime: TimeInterval
+    /// Rider-facing duration adjusted to the active bike's configured pace.
+    let personalizedTravelTime: TimeInterval
     let stressProfile: RouteStressScorer.Profile
     let coordinates: [CLLocationCoordinate2D]
     let isMain: Bool
@@ -19,6 +22,7 @@ final class NavigationViewModel {
     var isRequestingRoute = false
     var requestError: String?
     var navigationRoutes: NavigationRoutes?
+    var rideTimeProfile: RideTimeProfile = .defaultProfile
     var preference: RoutingPreference = RoutingPreferenceStore.current {
         didSet {
             RoutingPreferenceStore.current = preference
@@ -38,6 +42,10 @@ final class NavigationViewModel {
                 id: main.routeId.description,
                 distanceMeters: main.route.distance,
                 expectedTravelTime: main.route.expectedTravelTime,
+                personalizedTravelTime: rideTimeProfile.personalizedDuration(
+                    mapboxDuration: main.route.expectedTravelTime,
+                    distanceMeters: main.route.distance
+                ),
                 stressProfile: RouteStressScorer.profile(for: main.route),
                 coordinates: main.route.shape?.coordinates ?? [],
                 isMain: true,
@@ -50,6 +58,10 @@ final class NavigationViewModel {
                     id: alternative.routeId.description,
                     distanceMeters: alternative.route.distance,
                     expectedTravelTime: alternative.route.expectedTravelTime,
+                    personalizedTravelTime: rideTimeProfile.personalizedDuration(
+                        mapboxDuration: alternative.route.expectedTravelTime,
+                        distanceMeters: alternative.route.distance
+                    ),
                     stressProfile: RouteStressScorer.profile(for: alternative.route),
                     coordinates: alternative.route.shape?.coordinates ?? [],
                     isMain: false,
@@ -88,6 +100,10 @@ final class NavigationViewModel {
     func clear() {
         navigationRoutes = nil
         requestError = nil
+    }
+
+    func updateRideTimeProfile(_ profile: RideTimeProfile) {
+        rideTimeProfile = profile
     }
 
     /// Picks the alternative that best matches the active preference and promotes it to main.

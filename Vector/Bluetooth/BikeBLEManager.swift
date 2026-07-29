@@ -84,9 +84,16 @@ final class BikeBLEManager: NSObject {
         if scanState == .scanning { scanState = .idle }
     }
 
+    /// Ends the scan and removes its transient results from the Bike tab.
+    func dismissDiscoveredPeripherals() {
+        stopScanning()
+        discoveredPeripherals = []
+    }
+
     func connect(_ discovered: DiscoveredPeripheral) {
         central.stopScan()
         scanState = .connecting
+        discoveredPeripherals = []
         connectedPeripheral = discovered.peripheral
         discoveredCharacteristics = []
         characteristicsByKey = [:]
@@ -101,6 +108,7 @@ final class BikeBLEManager: NSObject {
     func reconnect(peripheralIdentifier: UUID) {
         let known = central.retrievePeripherals(withIdentifiers: [peripheralIdentifier])
         if let p = known.first {
+            applyProfileSettings(for: peripheralIdentifier.uuidString)
             p.delegate = self
             connectedPeripheral = p
             scanState = .connecting
@@ -110,6 +118,11 @@ final class BikeBLEManager: NSObject {
         } else {
             startScanning()
         }
+    }
+
+    /// Applies hardware-specific settings from the selected bike before CSC measurements arrive.
+    func apply(profile: BikeProfile) {
+        telemetry.wheelCircumferenceMeters = profile.wheelCircumferenceMeters
     }
 
     /// Re-issues a read for one characteristic — useful in the debug view for characteristics
@@ -131,16 +144,39 @@ final class BikeBLEManager: NSObject {
     private func saveProfile(_ peripheral: CBPeripheral) {
         guard let context = modelContext else { return }
         let identifier = peripheral.identifier.uuidString
-        let descriptor = FetchDescriptor<BikeProfile>(
-            predicate: #Predicate { $0.peripheralIdentifier == identifier }
-        )
-        if let existing = try? context.fetch(descriptor).first {
-            existing.lastConnectedAt = Date()
+        let descriptor = FetchDescriptor<BikeProfile>()
+        guard let profiles = try? context.fetch(descriptor) else { return }
+
+        let profile: BikeProfile
+        if let existing = profiles.first(where: { $0.peripheralIdentifier == identifier }) {
+            profile = existing
+        } else if let unpairedActive = profiles.first(where: { $0.isActive && !$0.isPaired }) {
+            // A rider can configure "My E-bike" before pairing it. Preserve those details and
+            // attach the first real BLE peripheral instead of creating a duplicate profile.
+            unpairedActive.peripheralIdentifier = identifier
+            if unpairedActive.name == "My E-bike" || unpairedActive.name == "My Bike" {
+                unpairedActive.name = peripheral.name ?? unpairedActive.name
+            }
+            profile = unpairedActive
         } else {
-            let profile = BikeProfile(name: peripheral.name ?? "Bike", peripheralIdentifier: identifier)
-            profile.lastConnectedAt = Date()
+            profile = BikeProfile(name: peripheral.name ?? "Bike", peripheralIdentifier: identifier)
             context.insert(profile)
         }
+
+        profile.lastConnectedAt = Date()
+        BikeProfileStore.activate(profile, among: profiles + [profile])
+        apply(profile: profile)
+    }
+
+    private func applyProfileSettings(for peripheralIdentifier: String) {
+        guard let context = modelContext else { return }
+        let descriptor = FetchDescriptor<BikeProfile>()
+        guard let profiles = try? context.fetch(descriptor),
+              let profile = profiles.first(where: { $0.peripheralIdentifier == peripheralIdentifier })
+        else { return }
+
+        BikeProfileStore.activate(profile, among: profiles)
+        apply(profile: profile)
     }
 
     @MainActor
