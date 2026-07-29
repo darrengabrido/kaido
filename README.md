@@ -5,9 +5,9 @@ An intelligent ride companion for iOS — turn-by-turn routing, bike lane visual
 ## Features
 
 - **Turn-by-turn navigation** with recommended route alternatives shown before you commit, powered by the Mapbox Navigation SDK.
-- **Bike lane visualization** on the map — dedicated cycle paths and on-street painted lanes are rendered with distinct styles and a legend, toggleable on both the main map and the route planner.
+- **Cycling map options** — tap the bicycle control to independently show bike lanes and paths or opt into Free Ride mode.
 - **Destination search** with rich business/POI results (category, address, icon) via the Mapbox Search Box API.
-- **AI discover (free ride mode)** — while browsing the map with no destination set, Vector surfaces nearby parks, cafes, and attractions based on your location. With an OpenAI API key configured, suggestions include short AI-written blurbs explaining why each stop is worth a visit.
+- **AI discover (free ride mode)** — after the rider explicitly enables Free Ride from the bicycle menu, Vector surfaces nearby parks, cafes, and attractions based on their location. With an OpenAI API key configured, suggestions include short AI-written blurbs explaining why each stop is worth a visit.
 - **Custom route planning** — draw a route by tapping waypoints on the map, save it, and revisit it later.
 - **Ride history** — routes and past rides persist locally and sync across devices via CloudKit.
 - **Live bike telemetry** over Bluetooth LE — speed, cadence, and battery, read from standard Cycling Speed & Cadence and Battery GATT profiles and shown in a heads-up display during navigation.

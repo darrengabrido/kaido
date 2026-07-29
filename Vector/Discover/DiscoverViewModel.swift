@@ -32,6 +32,7 @@ final class DiscoverViewModel {
     }
 
     func refresh(location: CLLocation) {
+        lastRefreshCoordinate = nil
         refreshTask?.cancel()
         refreshTask = Task {
             await loadRecommendations(near: location)

@@ -11,6 +11,7 @@ struct MapboxMapView: View {
 
     @State private var viewport: Viewport = .followPuck(zoom: 15, bearing: .heading, pitch: 0)
     @State private var showBikeLanes = true
+    @State private var isFreeRideEnabled = false
     @State private var searchViewModel = MapSearchViewModel()
     @State private var navigationViewModel = NavigationViewModel()
     @State private var discoverViewModel = DiscoverViewModel()
@@ -18,9 +19,10 @@ struct MapboxMapView: View {
     @State private var isPresentingNavigation = false
     @FocusState private var isSearchFocused: Bool
 
-    /// Browsing the map with no destination, route, or active navigation session.
-    private var isFreeRideMode: Bool {
-        searchViewModel.selectedDestination == nil
+    /// Free Ride is explicitly enabled and the map is available for discovery.
+    private var shouldShowDiscover: Bool {
+        isFreeRideEnabled
+            && searchViewModel.selectedDestination == nil
             && navigationViewModel.navigationRoutes == nil
             && !isPresentingNavigation
             && searchViewModel.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -131,22 +133,43 @@ struct MapboxMapView: View {
 
                 Spacer()
 
-                // Bike lanes toggle lives in the layout flow rather than as a free-floating
-                // corner overlay, so it is pushed up by the destination card instead of
-                // covering its "Start Navigation" button.
-                Button {
-                    showBikeLanes.toggle()
+                // Cycling map options live behind one control to keep the map uncluttered.
+                // Opening the menu lets the rider independently toggle infrastructure or
+                // opt into Free Ride and its nearby discovery suggestions.
+                Menu {
+                    Button {
+                        showBikeLanes.toggle()
+                    } label: {
+                        Label(
+                            "Bike Lanes & Paths",
+                            systemImage: showBikeLanes ? "checkmark.circle.fill" : "circle"
+                        )
+                    }
+
+                    Button {
+                        setFreeRideEnabled(!isFreeRideEnabled)
+                    } label: {
+                        Label(
+                            "Free Ride",
+                            systemImage: isFreeRideEnabled ? "checkmark.circle.fill" : "circle"
+                        )
+                    }
                 } label: {
                     Image(systemName: "bicycle")
                         .font(.system(size: 16, weight: .medium))
-                        .foregroundStyle(showBikeLanes ? Color.routeTeal : Color.secondary)
+                        .foregroundStyle(
+                            isFreeRideEnabled
+                                ? Color.vectorViolet
+                                : (showBikeLanes ? Color.routeTeal : Color.secondary)
+                        )
                         .frame(width: 44, height: 44)
                 }
                 .glassEffect(.regular, in: Circle())
                 .frame(maxWidth: .infinity, alignment: .trailing)
-                .accessibilityLabel(showBikeLanes ? "Hide bike lanes" : "Show bike lanes")
+                .accessibilityLabel("Cycling map options")
+                .accessibilityHint("Choose bike lanes and paths or Free Ride")
 
-                if isFreeRideMode, searchViewModel.results.isEmpty, !isSearchFocused {
+                if shouldShowDiscover, searchViewModel.results.isEmpty, !isSearchFocused {
                     DiscoverPanelView(viewModel: discoverViewModel) { recommendation in
                         selectDestination(recommendation.searchResult)
                     } onRefresh: {
@@ -183,17 +206,17 @@ struct MapboxMapView: View {
         .task {
             discoverViewModel.refreshIfNeeded(
                 location: locationManager.currentLocation,
-                isFreeRideMode: isFreeRideMode
+                isFreeRideMode: shouldShowDiscover
             )
         }
         .onChange(of: locationManager.currentLocation?.coordinate.latitude) { _, _ in
             searchViewModel.proximity = locationManager.currentLocation?.coordinate
             discoverViewModel.refreshIfNeeded(
                 location: locationManager.currentLocation,
-                isFreeRideMode: isFreeRideMode
+                isFreeRideMode: shouldShowDiscover
             )
         }
-        .onChange(of: isFreeRideMode) { _, inFreeRide in
+        .onChange(of: shouldShowDiscover) { _, inFreeRide in
             if inFreeRide {
                 discoverViewModel.refreshIfNeeded(
                     location: locationManager.currentLocation,
@@ -409,6 +432,8 @@ struct MapboxMapView: View {
     }
 
     private func selectDestination(_ result: SearchResult) {
+        isFreeRideEnabled = false
+        discoverViewModel.clear()
         searchViewModel.selectResult(result)
         isSearchFocused = false
         withAnimation {
@@ -422,10 +447,19 @@ struct MapboxMapView: View {
         withAnimation {
             viewport = .followPuck(zoom: 15, bearing: .heading, pitch: 0)
         }
-        discoverViewModel.refreshIfNeeded(
-            location: locationManager.currentLocation,
-            isFreeRideMode: true
-        )
+    }
+
+    private func setFreeRideEnabled(_ enabled: Bool) {
+        isFreeRideEnabled = enabled
+        if enabled {
+            clearDestination()
+            discoverViewModel.refreshIfNeeded(
+                location: locationManager.currentLocation,
+                isFreeRideMode: true
+            )
+        } else {
+            discoverViewModel.clear()
+        }
     }
 
     private func fetchRoutes(to destination: SearchResult) {
