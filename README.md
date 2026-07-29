@@ -65,7 +65,7 @@ To regenerate the project after changing `project.yml` (targets, permissions, en
 
 ### Continuous integration
 
-The `iOS Build` GitHub Actions workflow runs on pull requests, pushes to `master`, and manual dispatches. It uses a macOS 26 runner with Xcode 26.5, generates the project with XcodeGen, and performs an unsigned iOS Simulator build.
+The `iOS Build` GitHub Actions workflow runs on pull requests, branch pushes, and manual dispatches. It uses a macOS 26 runner with Xcode 26.5, generates the project with XcodeGen, and performs an unsigned iOS Simulator build.
 
 CI uses placeholder or empty service credentials because compilation does not contact Mapbox, Supabase, or OpenAI. No repository secrets are required for this build check.
 
