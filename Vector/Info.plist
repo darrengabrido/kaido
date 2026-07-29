@@ -32,6 +32,8 @@
 	<string>$(SUPABASE_ANON_KEY)</string>
 	<key>SupabaseHost</key>
 	<string>$(SUPABASE_HOST)</string>
+	<key>OpenAIAPIKey</key>
+	<string>$(OPENAI_API_KEY)</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>location</string>

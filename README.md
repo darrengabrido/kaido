@@ -7,6 +7,7 @@ An intelligent ride companion for iOS — turn-by-turn routing, bike lane visual
 - **Turn-by-turn navigation** with recommended route alternatives shown before you commit, powered by the Mapbox Navigation SDK.
 - **Bike lane visualization** on the map — dedicated cycle paths and on-street painted lanes are rendered with distinct styles and a legend, toggleable on both the main map and the route planner.
 - **Destination search** with rich business/POI results (category, address, icon) via the Mapbox Search Box API.
+- **AI discover (free ride mode)** — while browsing the map with no destination set, Vector surfaces nearby parks, cafes, and attractions based on your location. With an OpenAI API key configured, suggestions include short AI-written blurbs explaining why each stop is worth a visit.
 - **Custom route planning** — draw a route by tapping waypoints on the map, save it, and revisit it later.
 - **Ride history** — routes and past rides persist locally and sync across devices via CloudKit.
 - **Live bike telemetry** over Bluetooth LE — speed, cadence, and battery, read from standard Cycling Speed & Cadence and Battery GATT profiles and shown in a heads-up display during navigation.
@@ -28,7 +29,8 @@ Vector/
 ├── Auth/            Sign-in screen, session state, Supabase client setup
 ├── Bluetooth/       BLE manager, telemetry model, bike-connection UI
 ├── HUD/             In-navigation heads-up display
-├── Map/             Main map view, search, bike lane layers/legend
+├── Map/             Main map view, search, bike lane layers/legend, free-ride discover
+├── Discover/        AI-curated nearby POI suggestions for free ride mode
 ├── Models/          SwiftData models (Route, Waypoint, Ride, BikeProfile)
 ├── Navigation/       Directions/routing and turn-by-turn session view
 ├── Persistence/      SwiftData model container
@@ -52,7 +54,7 @@ Vector/
    ```
    cp Config/Secrets.xcconfig.example Config/Secrets.xcconfig
    ```
-   Add your Mapbox token. Supabase credentials are optional — leave them blank and the app still builds and runs, with sign-in disabled and guest mode always available.
+   Add your Mapbox token. Supabase credentials are optional — leave them blank and the app still builds and runs, with sign-in disabled and guest mode always available. An OpenAI API key is also optional — without it, free-ride discover still works using nearby Mapbox POIs and built-in suggestion heuristics.
 3. Generate the Xcode project:
    ```
    xcodegen generate

@@ -34,6 +34,7 @@ targets:
         MBXAccessToken: "$(MAPBOX_ACCESS_TOKEN)"
         SupabaseHost: "$(SUPABASE_HOST)"
         SupabaseAnonKey: "$(SUPABASE_ANON_KEY)"
+        OpenAIAPIKey: "$(OPENAI_API_KEY)"
         NSLocationWhenInUseUsageDescription: "Vector needs your location to show you on the map and provide turn-by-turn navigation."
         NSLocationAlwaysAndWhenInUseUsageDescription: "Vector needs your location to track your ride and keep navigating while your phone is locked or in your pocket."
         NSBluetoothAlwaysUsageDescription: "Vector connects to your bike over Bluetooth to show live speed and battery data."

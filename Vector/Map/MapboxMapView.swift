@@ -13,9 +13,18 @@ struct MapboxMapView: View {
     @State private var showBikeLanes = true
     @State private var searchViewModel = MapSearchViewModel()
     @State private var navigationViewModel = NavigationViewModel()
+    @State private var discoverViewModel = DiscoverViewModel()
     @State private var mediaPlayerManager = MediaPlayerManager()
     @State private var isPresentingNavigation = false
     @FocusState private var isSearchFocused: Bool
+
+    /// Browsing the map with no destination, route, or active navigation session.
+    private var isFreeRideMode: Bool {
+        searchViewModel.selectedDestination == nil
+            && navigationViewModel.navigationRoutes == nil
+            && !isPresentingNavigation
+            && searchViewModel.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -137,6 +146,16 @@ struct MapboxMapView: View {
                 .frame(maxWidth: .infinity, alignment: .trailing)
                 .accessibilityLabel(showBikeLanes ? "Hide bike lanes" : "Show bike lanes")
 
+                if isFreeRideMode, searchViewModel.results.isEmpty, !isSearchFocused {
+                    DiscoverPanelView(viewModel: discoverViewModel) { recommendation in
+                        selectDestination(recommendation.searchResult)
+                    } onRefresh: {
+                        if let location = locationManager.currentLocation {
+                            discoverViewModel.refresh(location: location)
+                        }
+                    }
+                }
+
                 if let destination = searchViewModel.selectedDestination {
                     destinationCard(destination)
                 }
@@ -161,8 +180,28 @@ struct MapboxMapView: View {
             }
 
         }
+        .task {
+            discoverViewModel.refreshIfNeeded(
+                location: locationManager.currentLocation,
+                isFreeRideMode: isFreeRideMode
+            )
+        }
         .onChange(of: locationManager.currentLocation?.coordinate.latitude) { _, _ in
             searchViewModel.proximity = locationManager.currentLocation?.coordinate
+            discoverViewModel.refreshIfNeeded(
+                location: locationManager.currentLocation,
+                isFreeRideMode: isFreeRideMode
+            )
+        }
+        .onChange(of: isFreeRideMode) { _, inFreeRide in
+            if inFreeRide {
+                discoverViewModel.refreshIfNeeded(
+                    location: locationManager.currentLocation,
+                    isFreeRideMode: true
+                )
+            } else {
+                discoverViewModel.clear()
+            }
         }
         .onChange(of: searchViewModel.query) { _, _ in
             searchViewModel.queryDidChange()
@@ -383,6 +422,10 @@ struct MapboxMapView: View {
         withAnimation {
             viewport = .followPuck(zoom: 15, bearing: .heading, pitch: 0)
         }
+        discoverViewModel.refreshIfNeeded(
+            location: locationManager.currentLocation,
+            isFreeRideMode: true
+        )
     }
 
     private func fetchRoutes(to destination: SearchResult) {

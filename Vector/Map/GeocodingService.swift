@@ -27,6 +27,61 @@ enum GeocodingError: LocalizedError {
 /// business/POI queries — "Blue Bottle Coffee", "REI", "Safeway" — return the actual
 /// places with categories, rather than the address-only results the Geocoding API gives.
 struct GeocodingService {
+    /// Human-readable area label for the coordinate (neighborhood, city).
+    func reverseGeocode(coordinate: CLLocationCoordinate2D) async throws -> String {
+        guard var components = URLComponents(string: "https://api.mapbox.com/search/searchbox/v1/reverse") else {
+            throw GeocodingError.invalidResponse
+        }
+        components.queryItems = [
+            URLQueryItem(name: "longitude", value: String(coordinate.longitude)),
+            URLQueryItem(name: "latitude", value: String(coordinate.latitude)),
+            URLQueryItem(name: "limit", value: "1"),
+            URLQueryItem(name: "access_token", value: MapboxOptions.accessToken)
+        ]
+        guard let url = components.url else { throw GeocodingError.invalidResponse }
+
+        let (data, response) = try await URLSession.shared.data(from: url)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            throw GeocodingError.invalidResponse
+        }
+
+        let decoded = try JSONDecoder().decode(SearchBoxResponse.self, from: data)
+        guard let props = decoded.features.first?.properties else {
+            return "Nearby"
+        }
+        return props.placeFormatted ?? props.fullAddress ?? props.name
+    }
+
+    /// Fetches POIs from several categories near a coordinate, deduplicated by Mapbox ID.
+    func nearbyPOIs(
+        coordinate: CLLocationCoordinate2D,
+        categories: [String],
+        limitPerCategory: Int = 3
+    ) async throws -> [SearchResult] {
+        var seen = Set<String>()
+        var results: [SearchResult] = []
+
+        try await withThrowingTaskGroup(of: [SearchResult].self) { group in
+            for category in categories {
+                group.addTask {
+                    try await self.categorySearch(
+                        category: category,
+                        proximity: coordinate,
+                        limit: limitPerCategory
+                    )
+                }
+            }
+
+            for try await batch in group {
+                for result in batch where seen.insert(result.id).inserted {
+                    results.append(result)
+                }
+            }
+        }
+
+        return results
+    }
+
     func search(query: String, proximity: CLLocationCoordinate2D?) async throws -> [SearchResult] {
         guard var components = URLComponents(string: "https://api.mapbox.com/search/searchbox/v1/forward") else {
             throw GeocodingError.invalidResponse
@@ -49,22 +104,50 @@ struct GeocodingService {
         }
 
         let decoded = try JSONDecoder().decode(SearchBoxResponse.self, from: data)
-        return decoded.features.map { feature in
-            let props = feature.properties
-            let isPOI = props.featureType == "poi"
-            return SearchResult(
-                id: props.mapboxId ?? UUID().uuidString,
-                name: props.name,
-                placeFormatted: props.fullAddress ?? props.placeFormatted,
-                coordinate: CLLocationCoordinate2D(
-                    latitude: props.coordinates.latitude,
-                    longitude: props.coordinates.longitude
-                ),
-                category: props.poiCategory?.first?.capitalized,
-                iconName: Self.symbolName(maki: props.maki, isPOI: isPOI),
-                isPOI: isPOI
-            )
+        return decoded.features.map(Self.searchResult(from:))
+    }
+
+    private func categorySearch(
+        category: String,
+        proximity: CLLocationCoordinate2D,
+        limit: Int
+    ) async throws -> [SearchResult] {
+        guard var components = URLComponents(
+            string: "https://api.mapbox.com/search/searchbox/v1/category/\(category)"
+        ) else {
+            throw GeocodingError.invalidResponse
         }
+        components.queryItems = [
+            URLQueryItem(name: "proximity", value: "\(proximity.longitude),\(proximity.latitude)"),
+            URLQueryItem(name: "limit", value: String(limit)),
+            URLQueryItem(name: "access_token", value: MapboxOptions.accessToken)
+        ]
+        guard let url = components.url else { throw GeocodingError.invalidResponse }
+
+        let (data, response) = try await URLSession.shared.data(from: url)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            throw GeocodingError.invalidResponse
+        }
+
+        let decoded = try JSONDecoder().decode(SearchBoxResponse.self, from: data)
+        return decoded.features.map(Self.searchResult(from:))
+    }
+
+    private static func searchResult(from feature: SearchBoxResponse.Feature) -> SearchResult {
+        let props = feature.properties
+        let isPOI = props.featureType == "poi"
+        return SearchResult(
+            id: props.mapboxId ?? UUID().uuidString,
+            name: props.name,
+            placeFormatted: props.fullAddress ?? props.placeFormatted,
+            coordinate: CLLocationCoordinate2D(
+                latitude: props.coordinates.latitude,
+                longitude: props.coordinates.longitude
+            ),
+            category: props.poiCategory?.first?.capitalized,
+            iconName: symbolName(maki: props.maki, isPOI: isPOI),
+            isPOI: isPOI
+        )
     }
 
     /// Maps Mapbox "maki" icon names to the closest SF Symbol.
