@@ -10,12 +10,20 @@ import MapboxNavigationCore
 /// `NavigationComponent` callbacks on the banner controllers; both banners read from here.
 @Observable
 final class NavigationBannerModel {
+    let rideTimeProfile: RideTimeProfile
     var instruction: VisualInstructionBanner?
     var distanceToManeuver: CLLocationDistance = 0
+    /// The native navigator duration retained for transparent ride details.
+    var routingDurationRemaining: TimeInterval = 0
+    /// The rider-facing duration adjusted for the active bike's configured pace.
     var durationRemaining: TimeInterval = 0
     var distanceRemaining: CLLocationDistance = 0
     var fractionTraveled: Double = 0
     var remainingSteps: [RouteStep] = []
+
+    init(rideTimeProfile: RideTimeProfile = .defaultProfile) {
+        self.rideTimeProfile = rideTimeProfile
+    }
 
     var arrivalDate: Date {
         Date().addingTimeInterval(durationRemaining)
@@ -23,8 +31,12 @@ final class NavigationBannerModel {
 
     func update(with progress: RouteProgress) {
         distanceToManeuver = progress.currentLegProgress.currentStepProgress.distanceRemaining
-        durationRemaining = progress.durationRemaining
+        routingDurationRemaining = progress.durationRemaining
         distanceRemaining = progress.distanceRemaining
+        durationRemaining = rideTimeProfile.personalizedDuration(
+            mapboxDuration: progress.durationRemaining,
+            distanceMeters: progress.distanceRemaining
+        )
         fractionTraveled = progress.fractionTraveled
         remainingSteps = progress.remainingSteps
     }

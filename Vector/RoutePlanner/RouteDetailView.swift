@@ -7,6 +7,7 @@ struct RouteDetailView: View {
 
     @Environment(\.modelContext) private var modelContext
     @Environment(BikeBLEManager.self) private var bleManager
+    @Query(sort: \BikeProfile.lastConnectedAt, order: .reverse) private var bikeProfiles: [BikeProfile]
     @State private var viewport: Viewport
     @State private var navigationViewModel = NavigationViewModel()
     @State private var isPresentingNavigation = false
@@ -92,6 +93,7 @@ struct RouteDetailView: View {
 
                 Button {
                     Task {
+                        navigationViewModel.updateRideTimeProfile(activeRideTimeProfile)
                         await navigationViewModel.requestRoutes(waypointCoordinates: coordinates)
                         if navigationViewModel.navigationRoutes != nil {
                             isPresentingNavigation = true
@@ -117,6 +119,12 @@ struct RouteDetailView: View {
         }
         .navigationTitle(route.name)
         .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            navigationViewModel.updateRideTimeProfile(activeRideTimeProfile)
+        }
+        .onChange(of: activeRideTimeProfile) { _, profile in
+            navigationViewModel.updateRideTimeProfile(profile)
+        }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {
@@ -132,7 +140,8 @@ struct RouteDetailView: View {
                 ZStack(alignment: .bottomTrailing) {
                     NavigationSessionView(
                         navigationRoutes: navigationRoutes,
-                        telemetry: bleManager.telemetry
+                        telemetry: bleManager.telemetry,
+                        rideTimeProfile: navigationViewModel.rideTimeProfile
                     ) { _ in
                         logRide()
                         isPresentingNavigation = false
@@ -164,6 +173,10 @@ struct RouteDetailView: View {
         ride.endedAt = Date()
         ride.distanceMeters = route.distanceMeters
         modelContext.insert(ride)
+    }
+
+    private var activeRideTimeProfile: RideTimeProfile {
+        BikeProfileStore.activeProfile(in: bikeProfiles)?.rideTimeProfile ?? .defaultProfile
     }
 }
 

@@ -1,5 +1,21 @@
 import Foundation
 
+enum BikeSpeed {
+    private static let kilometersPerMile = 1.609_344
+
+    static func milesPerHour(fromKph speedKph: Double) -> Double {
+        speedKph / kilometersPerMile
+    }
+
+    static func kilometersPerHour(fromMph speedMph: Double) -> Double {
+        speedMph * kilometersPerMile
+    }
+
+    static func mphText(fromKph speedKph: Double, precision: Int = 1) -> String {
+        String(format: "%.\(precision)f", milesPerHour(fromKph: speedKph))
+    }
+}
+
 @Observable
 final class BikeTelemetry {
     var speedKph: Double = 0

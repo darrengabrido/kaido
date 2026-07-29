@@ -5,6 +5,7 @@ import MapboxNavigationUIKit
 struct NavigationSessionView: UIViewControllerRepresentable {
     let navigationRoutes: NavigationRoutes
     let telemetry: BikeTelemetry
+    let rideTimeProfile: RideTimeProfile
     let onDismiss: (Bool) -> Void
 
     func makeUIViewController(context: Context) -> NavigationViewController {
@@ -73,16 +74,20 @@ struct NavigationSessionView: UIViewControllerRepresentable {
     func updateUIViewController(_ uiViewController: NavigationViewController, context: Context) {}
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onDismiss: onDismiss)
+        Coordinator(onDismiss: onDismiss, rideTimeProfile: rideTimeProfile)
     }
 
     final class Coordinator: NSObject, NavigationViewControllerDelegate {
         let onDismiss: (Bool) -> Void
         /// Owned here so it outlives `makeUIViewController` and stays shared by both banners.
-        let bannerModel = NavigationBannerModel()
+        let bannerModel: NavigationBannerModel
 
-        init(onDismiss: @escaping (Bool) -> Void) {
+        init(
+            onDismiss: @escaping (Bool) -> Void,
+            rideTimeProfile: RideTimeProfile
+        ) {
             self.onDismiss = onDismiss
+            bannerModel = NavigationBannerModel(rideTimeProfile: rideTimeProfile)
         }
 
         func navigationViewControllerDidDismiss(

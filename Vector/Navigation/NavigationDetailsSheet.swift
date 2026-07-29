@@ -1,3 +1,4 @@
+import Foundation
 import SwiftUI
 
 /// Ride detail, reached by tapping the bottom banner. The banner itself stays glanceable at
@@ -26,9 +27,14 @@ struct NavigationDetailsSheet: View {
     private var routeSection: some View {
         Section {
             detailRow(
-                "Time Remaining",
+                "Your ride time",
                 NavigationBannerModel.durationText(model.durationRemaining),
-                tint: .vectorInk
+                tint: .vectorViolet
+            )
+            detailRow(
+                "Routing time",
+                NavigationBannerModel.durationText(model.routingDurationRemaining),
+                tint: .vectorDim
             )
             detailRow(
                 "Distance Remaining",
@@ -51,6 +57,8 @@ struct NavigationDetailsSheet: View {
             }
         } header: {
             Text("Route")
+        } footer: {
+            Text("Your ride time is adjusted for \(model.rideTimeProfile.paceDescription) at \(BikeSpeed.mphText(fromKph: model.rideTimeProfile.cruisingSpeedKph)) mph. Routing time remains Mapbox's cycling duration.")
         }
     }
 
@@ -58,7 +66,7 @@ struct NavigationDetailsSheet: View {
     private var bikeSection: some View {
         Section {
             if telemetry.isConnected {
-                detailRow("Speed", String(format: "%.1f km/h", telemetry.speedKph), tint: .vectorInk)
+                detailRow("Speed", "\(BikeSpeed.mphText(fromKph: telemetry.speedKph)) mph", tint: .vectorInk)
                 detailRow("Cadence", String(format: "%.0f rpm", telemetry.cadenceRpm), tint: .vectorDim)
                 if let batteryPercent = telemetry.batteryPercent {
                     detailRow("Battery", "\(batteryPercent)%", tint: batteryTint(batteryPercent))

@@ -29,7 +29,7 @@ struct RideHUDView: View {
                     Text(speedString)
                         .font(.system(size: 26, weight: .semibold, design: .rounded))
                         .foregroundStyle(Color.vectorInk)
-                    Text("km/h")
+                    Text("mph")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -52,7 +52,7 @@ struct RideHUDView: View {
     }
 
     private var speedString: String {
-        String(format: "%.1f", telemetry.speedKph)
+        BikeSpeed.mphText(fromKph: telemetry.speedKph)
     }
 
     private var cadenceString: String {
