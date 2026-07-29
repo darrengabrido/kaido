@@ -71,6 +71,27 @@ Mapbox's binary SDK dependencies require a private download token even for compi
 
 Supabase and OpenAI credentials are not required for the build check.
 
+### TestFlight deployment
+
+The `Deploy to TestFlight` workflow is manual so a branch push cannot publish a build accidentally. It creates a signed Release archive, uses the workflow run number as the App Store build number, exports an IPA, and uploads it with an App Store Connect API key.
+
+Before running it, create an App Store Connect app for bundle ID `com.darren.vector`, an Apple Distribution certificate, and an App Store provisioning profile that includes the app's CloudKit, push notification, and Sign in with Apple capabilities. Add these GitHub Actions secrets:
+
+| Secret | Value |
+| --- | --- |
+| `MAPBOX_ACCESS_TOKEN` | Public `pk.` token used by the app at runtime |
+| `MAPBOX_DOWNLOADS_TOKEN` | Private Mapbox token with `DOWNLOADS:READ` |
+| `APPLE_DISTRIBUTION_CERTIFICATE_BASE64` | Base64-encoded `.p12` distribution certificate |
+| `APPLE_DISTRIBUTION_CERTIFICATE_PASSWORD` | Password used when exporting the `.p12` |
+| `APP_STORE_PROVISIONING_PROFILE_BASE64` | Base64-encoded App Store `.mobileprovision` file |
+| `APP_STORE_CONNECT_KEY_ID` | App Store Connect API key ID |
+| `APP_STORE_CONNECT_ISSUER_ID` | App Store Connect API issuer ID |
+| `APP_STORE_CONNECT_API_KEY` | Full contents of the API key's `.p8` file |
+
+`SUPABASE_HOST` and `SUPABASE_ANON_KEY` are optional GitHub secrets. The TestFlight workflow intentionally does not embed an OpenAI secret in the app binary; free-ride discovery uses its local fallback until AI requests are routed through a server-side endpoint.
+
+After this workflow is on `master`, open **Actions → Deploy to TestFlight → Run workflow**. A successful upload appears in App Store Connect after Apple's processing finishes.
+
 ### Enabling sign-in
 
 1. **Supabase project** — create one, then copy the project host (e.g. `abcdefgh.supabase.co`, without the `https://`) and the `anon`/`public` key from Project Settings → API into `Config/Secrets.xcconfig`. Enable the Email provider under Authentication → Providers.
