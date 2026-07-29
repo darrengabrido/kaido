@@ -31,6 +31,7 @@ jobs:
       - name: Create CI configuration
         run: |
           {
+            echo "DEVELOPMENT_TEAM = TEMPTEAMID"
             echo "MAPBOX_ACCESS_TOKEN = pk.ci-placeholder"
             echo "SUPABASE_HOST ="
             echo "SUPABASE_ANON_KEY ="
@@ -59,8 +60,8 @@ jobs:
         run: |
           set -o pipefail
           xcodebuild \
-            -project Vector.xcodeproj \
-            -scheme Vector \
+            -project Kaido.xcodeproj \
+            -scheme Kaido \
             -configuration Debug \
             -destination "generic/platform=iOS Simulator" \
             CODE_SIGNING_ALLOWED=NO \

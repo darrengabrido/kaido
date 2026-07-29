@@ -10,6 +10,9 @@ concurrency:
   group: testflight-deployment
   cancel-in-progress: false
 
+env:
+  APP_BUNDLE_ID: com.oaktreehouse.kaido
+
 jobs:
   deploy:
     name: Archive and upload
@@ -29,6 +32,7 @@ jobs:
 
       - name: Validate deployment secrets
         env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           MAPBOX_ACCESS_TOKEN: ${{ secrets.MAPBOX_ACCESS_TOKEN }}
           MAPBOX_DOWNLOADS_TOKEN: ${{ secrets.MAPBOX_DOWNLOADS_TOKEN }}
           APPLE_DISTRIBUTION_CERTIFICATE_BASE64: ${{ secrets.APPLE_DISTRIBUTION_CERTIFICATE_BASE64 }}
@@ -40,6 +44,7 @@ jobs:
         run: |
           missing=0
           for name in \
+            APPLE_TEAM_ID \
             MAPBOX_ACCESS_TOKEN \
             MAPBOX_DOWNLOADS_TOKEN \
             APPLE_DISTRIBUTION_CERTIFICATE_BASE64 \
@@ -58,11 +63,13 @@ jobs:
 
       - name: Create app configuration
         env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           MAPBOX_ACCESS_TOKEN: ${{ secrets.MAPBOX_ACCESS_TOKEN }}
           SUPABASE_HOST: ${{ secrets.SUPABASE_HOST }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: |
           {
+            echo "DEVELOPMENT_TEAM = $APPLE_TEAM_ID"
             echo "MAPBOX_ACCESS_TOKEN = $MAPBOX_ACCESS_TOKEN"
             echo "SUPABASE_HOST = $SUPABASE_HOST"
             echo "SUPABASE_ANON_KEY = $SUPABASE_ANON_KEY"
@@ -89,7 +96,7 @@ jobs:
           CERTIFICATE_PATH="$RUNNER_TEMP/distribution.p12"
           PROFILE_PATH="$RUNNER_TEMP/profile.mobileprovision"
           PROFILE_PLIST="$RUNNER_TEMP/profile.plist"
-          KEYCHAIN_PATH="$RUNNER_TEMP/vector-build.keychain-db"
+          KEYCHAIN_PATH="$RUNNER_TEMP/kaido-build.keychain-db"
           KEYCHAIN_PASSWORD="$(uuidgen)"
 
           printf '%s' "$APPLE_DISTRIBUTION_CERTIFICATE_BASE64" | base64 --decode > "$CERTIFICATE_PATH"
@@ -133,14 +140,16 @@ jobs:
         run: xcodegen generate
 
       - name: Archive
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           xcodebuild \
-            -project Vector.xcodeproj \
-            -scheme Vector \
+            -project Kaido.xcodeproj \
+            -scheme Kaido \
             -configuration Release \
             -destination "generic/platform=iOS" \
-            -archivePath "$RUNNER_TEMP/Vector.xcarchive" \
-            DEVELOPMENT_TEAM=UMS9MYBSZK \
+            -archivePath "$RUNNER_TEMP/Kaido.xcarchive" \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="Apple Distribution" \
             PROVISIONING_PROFILE_SPECIFIER="$PROVISIONING_PROFILE_SPECIFIER" \
@@ -149,6 +158,8 @@ jobs:
             clean archive
 
       - name: Export IPA
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
           <?xml version="1.0" encoding="UTF-8"?>
@@ -164,10 +175,10 @@ jobs:
             <key>signingCertificate</key>
             <string>Apple Distribution</string>
             <key>teamID</key>
-            <string>UMS9MYBSZK</string>
+            <string>$APPLE_TEAM_ID</string>
             <key>provisioningProfiles</key>
             <dict>
-              <key>com.darren.vector</key>
+              <key>$APP_BUNDLE_ID</key>
               <string>$PROVISIONING_PROFILE_SPECIFIER</string>
             </dict>
             <key>stripSwiftSymbols</key>
@@ -180,11 +191,11 @@ jobs:
 
           xcodebuild \
             -exportArchive \
-            -archivePath "$RUNNER_TEMP/Vector.xcarchive" \
+            -archivePath "$RUNNER_TEMP/Kaido.xcarchive" \
             -exportPath "$RUNNER_TEMP/export" \
             -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist"
 
-          test -f "$RUNNER_TEMP/export/Vector.ipa"
+          test -f "$RUNNER_TEMP/export/Kaido.ipa"
 
       - name: Upload to TestFlight
         env:
@@ -194,7 +205,7 @@ jobs:
           xcrun altool \
             --upload-app \
             --type ios \
-            --file "$RUNNER_TEMP/export/Vector.ipa" \
+            --file "$RUNNER_TEMP/export/Kaido.ipa" \
             --apiKey "$APP_STORE_CONNECT_KEY_ID" \
             --apiIssuer "$APP_STORE_CONNECT_ISSUER_ID"
 

@@ -1,6 +1,6 @@
-name: Vector
+name: Kaido
 options:
-  bundleIdPrefix: com.darren
+  bundleIdPrefix: com.oaktreehouse
   deploymentTarget:
     iOS: "26.0"
   createIntermediateGroups: true
@@ -21,24 +21,25 @@ packages:
     majorVersion: 2.0.0
 
 targets:
-  Vector:
+  Kaido:
     type: application
     platform: iOS
     deploymentTarget: "26.0"
     sources:
-      - path: Vector
+      - path: Kaido
     info:
-      path: Vector/Info.plist
+      path: Kaido/Info.plist
       properties:
         UILaunchScreen: {}
+        CFBundleDisplayName: Kaido
         MBXAccessToken: "$(MAPBOX_ACCESS_TOKEN)"
         SupabaseHost: "$(SUPABASE_HOST)"
         SupabaseAnonKey: "$(SUPABASE_ANON_KEY)"
         OpenAIAPIKey: "$(OPENAI_API_KEY)"
-        NSLocationWhenInUseUsageDescription: "Vector needs your location to show you on the map and provide turn-by-turn navigation."
-        NSLocationAlwaysAndWhenInUseUsageDescription: "Vector needs your location to track your ride and keep navigating while your phone is locked or in your pocket."
-        NSBluetoothAlwaysUsageDescription: "Vector connects to your bike over Bluetooth to show live speed and battery data."
-        NSAppleMusicUsageDescription: "Vector shows what's playing and lets you control playback from the map so you don't have to leave the app."
+        NSLocationWhenInUseUsageDescription: "Kaido needs your location to show you on the map and provide turn-by-turn navigation."
+        NSLocationAlwaysAndWhenInUseUsageDescription: "Kaido needs your location to track your ride and keep navigating while your phone is locked or in your pocket."
+        NSBluetoothAlwaysUsageDescription: "Kaido connects to your bike over Bluetooth to show live speed and battery data."
+        NSAppleMusicUsageDescription: "Kaido shows what's playing and lets you control playback from the map so you don't have to leave the app."
         UIBackgroundModes:
           - location
           - bluetooth-central
@@ -47,10 +48,10 @@ targets:
           # fatal error at init if "audio" is missing, so navigation cannot start without it.
           - audio
     entitlements:
-      path: Vector/Vector.entitlements
+      path: Kaido/Kaido.entitlements
       properties:
         com.apple.developer.icloud-container-identifiers:
-          - iCloud.com.darren.vector
+          - iCloud.com.oaktreehouse.kaido
         com.apple.developer.icloud-services:
           - CloudKit
         aps-environment: development
@@ -58,12 +59,12 @@ targets:
           - Default
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.darren.vector
-        PRODUCT_NAME: Vector
+        PRODUCT_BUNDLE_IDENTIFIER: com.oaktreehouse.kaido
+        PRODUCT_NAME: Kaido
         MARKETING_VERSION: "0.1.0"
         CURRENT_PROJECT_VERSION: "1"
         CODE_SIGN_STYLE: Automatic
-        DEVELOPMENT_TEAM: UMS9MYBSZK
+        DEVELOPMENT_TEAM: "$(DEVELOPMENT_TEAM)"
         TARGETED_DEVICE_FAMILY: "1"
         ENABLE_USER_SCRIPT_SANDBOXING: NO
     dependencies:

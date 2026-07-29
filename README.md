@@ -1,13 +1,17 @@
-# Vector
+# Kaido
 
 An intelligent ride companion for iOS — turn-by-turn routing, bike lane visualization, custom route planning, and live BLE telemetry from your bike, all in one place.
+
+App Store listing name: **Kaido Ride**. Home-screen / brand name: **Kaido**.
+
+Bundle ID: `com.oaktreehouse.kaido`
 
 ## Features
 
 - **Turn-by-turn navigation** with recommended route alternatives shown before you commit, powered by the Mapbox Navigation SDK.
 - **Cycling map options** — tap the bicycle control to independently show bike lanes and paths or opt into Free Ride mode.
 - **Destination search** with rich business/POI results (category, address, icon) via the Mapbox Search Box API.
-- **AI discover (free ride mode)** — after the rider explicitly enables Free Ride from the bicycle menu, Vector surfaces nearby parks, cafes, and attractions based on their location. With an OpenAI API key configured, suggestions include short AI-written blurbs explaining why each stop is worth a visit.
+- **AI discover (free ride mode)** — after the rider explicitly enables Free Ride from the bicycle menu, Kaido surfaces nearby parks, cafes, and attractions based on their location. With an OpenAI API key configured, suggestions include short AI-written blurbs explaining why each stop is worth a visit.
 - **Custom route planning** — draw a route by tapping waypoints on the map, save it, and revisit it later.
 - **Ride history** — routes and past rides persist locally and sync across devices via CloudKit.
 - **Live bike telemetry** over Bluetooth LE — speed, cadence, and battery, read from standard Cycling Speed & Cadence and Battery GATT profiles and shown in a heads-up display during navigation.
@@ -25,15 +29,15 @@ An intelligent ride companion for iOS — turn-by-turn routing, bike lane visual
 ## Project structure
 
 ```
-Vector/
+Kaido/
 ├── Auth/            Sign-in screen, session state, Supabase client setup
 ├── Bluetooth/       BLE manager, telemetry model, bike-connection UI
 ├── HUD/             In-navigation heads-up display
 ├── Map/             Main map view, search, bike lane layers/legend, free-ride discover
 ├── Discover/        AI-curated nearby POI suggestions for free ride mode
 ├── Models/          SwiftData models (Route, Waypoint, Ride, BikeProfile)
-├── Navigation/       Directions/routing and turn-by-turn session view
-├── Persistence/      SwiftData model container
+├── Navigation/      Directions/routing and turn-by-turn session view
+├── Persistence/     SwiftData model container
 ├── RoutePlanner/    Route drawing, saved routes list, route detail
 └── Theme/           Shared colors and styling
 ```
@@ -54,12 +58,12 @@ Vector/
    ```
    cp Config/Secrets.xcconfig.example Config/Secrets.xcconfig
    ```
-   Add your Mapbox token. Supabase credentials are optional — leave them blank and the app still builds and runs, with sign-in disabled and guest mode always available. An OpenAI API key is also optional — without it, free-ride discover still works using nearby Mapbox POIs and built-in suggestion heuristics.
+   Set `DEVELOPMENT_TEAM` to your 10-character Apple Team ID and add your Mapbox token. Supabase credentials are optional — leave them blank and the app still builds and runs, with sign-in disabled and guest mode always available. An OpenAI API key is also optional — without it, free-ride discover still works using nearby Mapbox POIs and built-in suggestion heuristics.
 3. Generate the Xcode project:
    ```
    xcodegen generate
    ```
-4. Open `Vector.xcodeproj` and run.
+4. Open `Kaido.xcodeproj` and run.
 
 To regenerate the project after changing `project.yml` (targets, permissions, entitlements, etc.), just re-run `xcodegen generate`.
 
@@ -75,30 +79,31 @@ Supabase and OpenAI credentials are not required for the build check.
 
 The `Deploy to TestFlight` workflow is manual so a branch push cannot publish a build accidentally. It creates a signed Release archive, uses the workflow run number as the App Store build number, exports an IPA, and uploads it with an App Store Connect API key.
 
-Before running it, create an App Store Connect app for bundle ID `com.darren.vector`, an Apple Distribution certificate, and an App Store provisioning profile that includes the app's CloudKit, push notification, and Sign in with Apple capabilities. Add these GitHub Actions secrets:
+Before running it, confirm App Store Connect has **Kaido Ride** for bundle ID `com.oaktreehouse.kaido`, then create an Apple Distribution certificate and an App Store provisioning profile that includes CloudKit, push notifications, and Sign in with Apple. Add these GitHub Actions secrets:
 
 | Secret | Value |
 | --- | --- |
+| `APPLE_TEAM_ID` | 10-character Apple Team ID |
 | `MAPBOX_ACCESS_TOKEN` | Public `pk.` token used by the app at runtime |
 | `MAPBOX_DOWNLOADS_TOKEN` | Private Mapbox token with `DOWNLOADS:READ` |
 | `APPLE_DISTRIBUTION_CERTIFICATE_BASE64` | Base64-encoded `.p12` distribution certificate |
 | `APPLE_DISTRIBUTION_CERTIFICATE_PASSWORD` | Password used when exporting the `.p12` |
-| `APP_STORE_PROVISIONING_PROFILE_BASE64` | Base64-encoded App Store `.mobileprovision` file |
+| `APP_STORE_PROVISIONING_PROFILE_BASE64` | Base64-encoded App Store `.mobileprovision` for `com.oaktreehouse.kaido` |
 | `APP_STORE_CONNECT_KEY_ID` | App Store Connect API key ID |
 | `APP_STORE_CONNECT_ISSUER_ID` | App Store Connect API issuer ID |
 | `APP_STORE_CONNECT_API_KEY` | Full contents of the API key's `.p8` file |
 
 `SUPABASE_HOST` and `SUPABASE_ANON_KEY` are optional GitHub secrets. The TestFlight workflow intentionally does not embed an OpenAI secret in the app binary; free-ride discovery uses its local fallback until AI requests are routed through a server-side endpoint.
 
-After this workflow is on `master`, open **Actions → Deploy to TestFlight → Run workflow**. A successful upload appears in App Store Connect after Apple's processing finishes.
+After the workflow is available on your branch, open **Actions → Deploy to TestFlight → Run workflow**. A successful upload appears in App Store Connect after Apple's processing finishes.
 
 ### Enabling sign-in
 
 1. **Supabase project** — create one, then copy the project host (e.g. `abcdefgh.supabase.co`, without the `https://`) and the `anon`/`public` key from Project Settings → API into `Config/Secrets.xcconfig`. Enable the Email provider under Authentication → Providers.
-2. **Apple Developer portal** — Identifiers → App ID `com.darren.vector` → enable the **Sign In with Apple** capability → Save.
-3. **Supabase Apple provider** — Authentication → Providers → Apple → enable it and set **Client IDs** to `com.darren.vector`.
+2. **Apple Developer portal** — Identifiers → App ID `com.oaktreehouse.kaido` → enable the **Sign In with Apple** capability → Save.
+3. **Supabase Apple provider** — Authentication → Providers → Apple → enable it and set **Client IDs** to `com.oaktreehouse.kaido`.
 
-Because Vector uses Apple's *native* sign-in (an on-device ID token exchanged via `signInWithIdToken`), the Services ID, `.p8` secret key, and OAuth callback URL are **not** required — those are only for Sign in with Apple on the web.
+Because Kaido uses Apple's *native* sign-in (an on-device ID token exchanged via `signInWithIdToken`), the Services ID, `.p8` secret key, and OAuth callback URL are **not** required — those are only for Sign in with Apple on the web.
 
 Sign in with Apple only works end-to-end on a device or simulator signed into an Apple Account.
 
