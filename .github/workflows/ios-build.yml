@@ -37,6 +37,21 @@ jobs:
             echo "OPENAI_API_KEY ="
           } > Config/Secrets.xcconfig
 
+      - name: Configure Mapbox SDK downloads
+        env:
+          MAPBOX_DOWNLOADS_TOKEN: ${{ secrets.MAPBOX_DOWNLOADS_TOKEN }}
+        run: |
+          if [[ -z "$MAPBOX_DOWNLOADS_TOKEN" ]]; then
+            echo "::error::Add a MAPBOX_DOWNLOADS_TOKEN repository secret with the Mapbox DOWNLOADS:READ scope."
+            exit 1
+          fi
+          {
+            echo "machine api.mapbox.com"
+            echo "login mapbox"
+            echo "password $MAPBOX_DOWNLOADS_TOKEN"
+          } > "$HOME/.netrc"
+          chmod 0600 "$HOME/.netrc"
+
       - name: Generate Xcode project
         run: xcodegen generate
 

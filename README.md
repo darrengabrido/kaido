@@ -67,7 +67,9 @@ To regenerate the project after changing `project.yml` (targets, permissions, en
 
 The `iOS Build` GitHub Actions workflow runs on pull requests, branch pushes, and manual dispatches. It uses a macOS 26 runner with Xcode 26.5, generates the project with XcodeGen, and performs an unsigned iOS Simulator build.
 
-CI uses placeholder or empty service credentials because compilation does not contact Mapbox, Supabase, or OpenAI. No repository secrets are required for this build check.
+Mapbox's binary SDK dependencies require a private download token even for compilation. Create a secret token with the `DOWNLOADS:READ` scope in the Mapbox dashboard, then add it in GitHub under **Settings → Secrets and variables → Actions** as `MAPBOX_DOWNLOADS_TOKEN`. Do not use the public `pk.` token or place this private token in `Info.plist`.
+
+Supabase and OpenAI credentials are not required for the build check.
 
 ### Enabling sign-in
 
