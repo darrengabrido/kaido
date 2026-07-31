@@ -96,6 +96,8 @@ Before running it, confirm App Store Connect has **Kaido Ride** for bundle ID `c
 | `SUPABASE_ANON_KEY` | Supabase `anon`/`public` API key |
 | `SPOTIFY_CLIENT_ID` | Spotify app Client ID (Redirect URI must be `kaido://spotify-callback`) |
 
+The App Store provisioning profile must include the **iCloud** container `iCloud.com.oaktreehouse.kaido` (CloudKit), **Push Notifications**, and **Sign in with Apple**. If archive fails with an iCloud container mismatch, edit the App ID in the Apple Developer portal, regenerate the App Store profile, and update `APP_STORE_PROVISIONING_PROFILE_BASE64`.
+
 The TestFlight workflow intentionally does not embed an OpenAI secret in the app binary; free-ride discovery uses its local fallback until AI requests are routed through a server-side endpoint.
 
 After the workflow is available on your branch, open **Actions → Deploy to TestFlight → Run workflow**. A successful upload appears in App Store Connect after Apple's processing finishes.

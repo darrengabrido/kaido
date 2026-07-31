@@ -75,7 +75,12 @@ targets:
         PRODUCT_NAME: Kaido
         MARKETING_VERSION: "0.1.0"
         CURRENT_PROJECT_VERSION: "1"
-        CODE_SIGN_STYLE: Automatic
+        # Signing comes from Config/*.xcconfig so CLI/archive overrides stay
+        # off the xcodebuild command line (SPM resource bundles reject a
+        # globally applied PROVISIONING_PROFILE_SPECIFIER).
+        CODE_SIGN_STYLE: "$(CODE_SIGN_STYLE)"
+        CODE_SIGN_IDENTITY: "$(CODE_SIGN_IDENTITY)"
+        PROVISIONING_PROFILE_SPECIFIER: "$(PROVISIONING_PROFILE_SPECIFIER)"
         DEVELOPMENT_TEAM: "$(DEVELOPMENT_TEAM)"
         TARGETED_DEVICE_FAMILY: "1"
         ENABLE_USER_SCRIPT_SANDBOXING: NO
