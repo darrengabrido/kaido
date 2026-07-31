@@ -41,6 +41,9 @@ jobs:
           APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
           APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
           APP_STORE_CONNECT_API_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
+          SUPABASE_HOST: ${{ secrets.SUPABASE_HOST }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SPOTIFY_CLIENT_ID: ${{ secrets.SPOTIFY_CLIENT_ID }}
         run: |
           missing=0
           for name in \
@@ -52,7 +55,10 @@ jobs:
             APP_STORE_PROVISIONING_PROFILE_BASE64 \
             APP_STORE_CONNECT_KEY_ID \
             APP_STORE_CONNECT_ISSUER_ID \
-            APP_STORE_CONNECT_API_KEY
+            APP_STORE_CONNECT_API_KEY \
+            SUPABASE_HOST \
+            SUPABASE_ANON_KEY \
+            SPOTIFY_CLIENT_ID
           do
             if [[ -z "${!name}" ]]; then
               echo "::error::Missing required TestFlight secret: $name"
@@ -67,12 +73,14 @@ jobs:
           MAPBOX_ACCESS_TOKEN: ${{ secrets.MAPBOX_ACCESS_TOKEN }}
           SUPABASE_HOST: ${{ secrets.SUPABASE_HOST }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SPOTIFY_CLIENT_ID: ${{ secrets.SPOTIFY_CLIENT_ID }}
         run: |
           {
             echo "DEVELOPMENT_TEAM = $APPLE_TEAM_ID"
             echo "MAPBOX_ACCESS_TOKEN = $MAPBOX_ACCESS_TOKEN"
             echo "SUPABASE_HOST = $SUPABASE_HOST"
             echo "SUPABASE_ANON_KEY = $SUPABASE_ANON_KEY"
+            echo "SPOTIFY_CLIENT_ID = $SPOTIFY_CLIENT_ID"
             echo "OPENAI_API_KEY ="
           } > Config/Secrets.xcconfig
 
