@@ -33,7 +33,7 @@ struct RoutesListView: View {
                                         systemImage: route.isFavorite ? "star.slash" : "star.fill"
                                     )
                                 }
-                                .tint(.favoriteAmber)
+                                .tint(.kaidoViolet)
                             }
                         }
                         .onDelete(perform: deleteRoutes)
@@ -75,10 +75,10 @@ private struct RouteRow: View {
         HStack(spacing: 12) {
             ZStack {
                 RoundedRectangle(cornerRadius: 12)
-                    .fill(Color.routeTeal.opacity(0.18))
+                    .fill(Color.kaidoDim.opacity(0.18))
                     .frame(width: 42, height: 42)
                 Image(systemName: "point.topleft.down.curvedto.point.bottomright.up")
-                    .foregroundStyle(Color.routeTeal)
+                    .foregroundStyle(Color.kaidoDim)
             }
 
             VStack(alignment: .leading, spacing: 4) {
@@ -88,15 +88,15 @@ private struct RouteRow: View {
                     if route.isFavorite {
                         Image(systemName: "star.fill")
                             .font(.caption2)
-                            .foregroundStyle(Color.favoriteAmber)
+                            .foregroundStyle(Color.kaidoViolet)
                     }
                 }
                 Text(formattedDistance(route.distanceMeters))
                     .font(.caption.weight(.medium))
-                    .foregroundStyle(Color.routeTeal)
+                    .foregroundStyle(Color.kaidoDim)
                     .padding(.horizontal, 9)
                     .padding(.vertical, 3)
-                    .background(Color.routeTeal.opacity(0.14))
+                    .background(Color.kaidoDim.opacity(0.14))
                     .clipShape(Capsule())
             }
         }

@@ -1,11 +1,16 @@
 import Foundation
 import CoreLocation
+import MapboxDirections
 import MapboxNavigationCore
 
 struct RouteOption: Identifiable {
     let id: String
     let distanceMeters: Double
+    /// Native Mapbox cycling duration retained for ranking and navigation internals.
     let expectedTravelTime: TimeInterval
+    /// Rider-facing duration adjusted to the active bike's configured pace.
+    let personalizedTravelTime: TimeInterval
+    let stressProfile: RouteStressScorer.Profile
     let coordinates: [CLLocationCoordinate2D]
     let isMain: Bool
     fileprivate let alternativeRoute: AlternativeRoute?
@@ -17,6 +22,15 @@ final class NavigationViewModel {
     var isRequestingRoute = false
     var requestError: String?
     var navigationRoutes: NavigationRoutes?
+    var rideTimeProfile: RideTimeProfile = .defaultProfile
+    var preference: RoutingPreference = RoutingPreferenceStore.current {
+        didSet {
+            RoutingPreferenceStore.current = preference
+            guard oldValue != preference else { return }
+            // Re-rank in place — no network round-trip, so toggling never blanks routes.
+            Task { await promotePreferredRoute() }
+        }
+    }
 
     private let directionsService = DirectionsService()
 
@@ -28,6 +42,11 @@ final class NavigationViewModel {
                 id: main.routeId.description,
                 distanceMeters: main.route.distance,
                 expectedTravelTime: main.route.expectedTravelTime,
+                personalizedTravelTime: rideTimeProfile.personalizedDuration(
+                    mapboxDuration: main.route.expectedTravelTime,
+                    distanceMeters: main.route.distance
+                ),
+                stressProfile: RouteStressScorer.profile(for: main.route),
                 coordinates: main.route.shape?.coordinates ?? [],
                 isMain: true,
                 alternativeRoute: nil
@@ -39,6 +58,11 @@ final class NavigationViewModel {
                     id: alternative.routeId.description,
                     distanceMeters: alternative.route.distance,
                     expectedTravelTime: alternative.route.expectedTravelTime,
+                    personalizedTravelTime: rideTimeProfile.personalizedDuration(
+                        mapboxDuration: alternative.route.expectedTravelTime,
+                        distanceMeters: alternative.route.distance
+                    ),
+                    stressProfile: RouteStressScorer.profile(for: alternative.route),
                     coordinates: alternative.route.shape?.coordinates ?? [],
                     isMain: false,
                     alternativeRoute: alternative
@@ -53,8 +77,12 @@ final class NavigationViewModel {
         requestError = nil
         defer { isRequestingRoute = false }
         do {
-            navigationRoutes = try await directionsService.requestRoute(waypointCoordinates: waypointCoordinates)
+            navigationRoutes = try await directionsService.requestRoute(
+                waypointCoordinates: waypointCoordinates
+            )
+            await promotePreferredRoute()
         } catch {
+            navigationRoutes = nil
             requestError = error.localizedDescription
         }
     }
@@ -72,5 +100,36 @@ final class NavigationViewModel {
     func clear() {
         navigationRoutes = nil
         requestError = nil
+    }
+
+    func updateRideTimeProfile(_ profile: RideTimeProfile) {
+        rideTimeProfile = profile
+    }
+
+    /// Picks the alternative that best matches the active preference and promotes it to main.
+    private func promotePreferredRoute() async {
+        let options = routeOptions
+        guard options.count > 1 else { return }
+        guard let preferred = preferredOption(among: options), !preferred.isMain else { return }
+        await selectRoute(preferred)
+    }
+
+    private func preferredOption(among options: [RouteOption]) -> RouteOption? {
+        switch preference {
+        case .fast:
+            return options.min(by: { $0.expectedTravelTime < $1.expectedTravelTime })
+        case .quiet:
+            // Prefer the quietest ride, but don't send someone on a wild detour — ignore
+            // options more than 40% slower than the fastest alternative.
+            guard let fastest = options.map(\.expectedTravelTime).min() else { return nil }
+            let candidates = options.filter { $0.expectedTravelTime <= fastest * 1.4 }
+            let pool = candidates.isEmpty ? options : candidates
+            return pool.min { lhs, rhs in
+                if abs(lhs.stressProfile.score - rhs.stressProfile.score) > 0.02 {
+                    return lhs.stressProfile.score < rhs.stressProfile.score
+                }
+                return lhs.expectedTravelTime < rhs.expectedTravelTime
+            }
+        }
     }
 }

@@ -19,6 +19,9 @@ packages:
   Supabase:
     url: https://github.com/supabase/supabase-swift
     majorVersion: 2.0.0
+  SpotifyiOS:
+    url: https://github.com/spotify/ios-sdk
+    majorVersion: 5.0.0
 
 targets:
   Kaido:
@@ -36,10 +39,19 @@ targets:
         SupabaseHost: "$(SUPABASE_HOST)"
         SupabaseAnonKey: "$(SUPABASE_ANON_KEY)"
         OpenAIAPIKey: "$(OPENAI_API_KEY)"
+        SpotifyClientID: "$(SPOTIFY_CLIENT_ID)"
         NSLocationWhenInUseUsageDescription: "Kaido needs your location to show you on the map and provide turn-by-turn navigation."
         NSLocationAlwaysAndWhenInUseUsageDescription: "Kaido needs your location to track your ride and keep navigating while your phone is locked or in your pocket."
         NSBluetoothAlwaysUsageDescription: "Kaido connects to your bike over Bluetooth to show live speed and battery data."
         NSAppleMusicUsageDescription: "Kaido shows what's playing and lets you control playback from the map so you don't have to leave the app."
+        # Spotify's App Remote hands the access token back by opening this scheme.
+        CFBundleURLTypes:
+          - CFBundleURLName: com.oaktreehouse.kaido.spotify
+            CFBundleURLSchemes:
+              - kaido
+        # Required for -[UIApplication canOpenURL:] to see the Spotify app.
+        LSApplicationQueriesSchemes:
+          - spotify
         UIBackgroundModes:
           - location
           - bluetooth-central
@@ -75,3 +87,5 @@ targets:
         product: MapboxNavigationUIKit
       - package: Supabase
         product: Supabase
+      - package: SpotifyiOS
+        product: SpotifyiOS

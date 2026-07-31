@@ -20,6 +20,21 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.oaktreehouse.kaido.spotify</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>kaido</string>
+			</array>
+		</dict>
+	</array>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>spotify</string>
+	</array>
 	<key>MBXAccessToken</key>
 	<string>$(MAPBOX_ACCESS_TOKEN)</string>
 	<key>NSAppleMusicUsageDescription</key>
@@ -30,6 +45,8 @@
 	<string>Kaido needs your location to track your ride and keep navigating while your phone is locked or in your pocket.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Kaido needs your location to show you on the map and provide turn-by-turn navigation.</string>
+	<key>SpotifyClientID</key>
+	<string>$(SPOTIFY_CLIENT_ID)</string>
 	<key>SupabaseAnonKey</key>
 	<string>$(SUPABASE_ANON_KEY)</string>
 	<key>SupabaseHost</key>

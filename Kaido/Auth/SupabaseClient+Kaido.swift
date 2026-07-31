@@ -11,9 +11,16 @@ enum KaidoSupabaseClient {
         guard let host = Bundle.main.object(forInfoDictionaryKey: "SupabaseHost") as? String,
               let anonKey = Bundle.main.object(forInfoDictionaryKey: "SupabaseAnonKey") as? String,
               !host.isEmpty, !anonKey.isEmpty,
+              !isPlaceholder(host: host, anonKey: anonKey),
               let url = URL(string: "https://\(host)") else {
             return nil
         }
         return SupabaseClient(supabaseURL: url, supabaseKey: anonKey)
     }()
+
+    private static func isPlaceholder(host: String, anonKey: String) -> Bool {
+        host.contains("your-project-ref")
+            || anonKey.contains("your_supabase")
+            || anonKey.hasSuffix("_here")
+    }
 }

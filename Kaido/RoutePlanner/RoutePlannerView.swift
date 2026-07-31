@@ -19,36 +19,7 @@ struct RoutePlannerView: View {
                     Puck2D(bearing: .heading)
 
                     if showBikeLanes {
-                        VectorSource(id: "streets-v8")
-                            .url("mapbox://mapbox.mapbox-streets-v8")
-                        // On-street painted bike lane — drawn on the road's own centerline (bike_lane field)
-                        LineLayer(id: "bike-onstreet-lane", source: "streets-v8")
-                            .sourceLayer("road")
-                            .filter(Exp(.any) {
-                                Exp(.eq) { Exp(.get) { "bike_lane" }; "yes" }
-                                Exp(.eq) { Exp(.get) { "bike_lane" }; "left" }
-                                Exp(.eq) { Exp(.get) { "bike_lane" }; "right" }
-                                Exp(.eq) { Exp(.get) { "bike_lane" }; "both" }
-                            })
-                            .lineColor(StyleColor(UIColor(Color.routeTealOnMap)))
-                            .lineWidth(3.0)
-                            .lineOpacity(0.95)
-                            .lineEmissiveStrength(1)
-                            .lineCap(.butt)
-                            .lineJoin(.round)
-                            .lineDashArray([2, 2])
-                            .slot(.top)
-                        // Dedicated, physically-separated cycle path — solid and thicker
-                        LineLayer(id: "bike-dedicated-path", source: "streets-v8")
-                            .sourceLayer("road")
-                            .filter(Exp(.eq) { Exp(.get) { "type" }; "cycleway" })
-                            .lineColor(StyleColor(UIColor(Color.routeTealOnMap)))
-                            .lineWidth(4.5)
-                            .lineOpacity(1.0)
-                            .lineEmissiveStrength(1)
-                            .lineCap(.round)
-                            .lineJoin(.round)
-                            .slot(.top)
+                        BikeLaneMapLayers()
                     }
 
                     if viewModel.lineCoordinates.count > 1 {
@@ -100,7 +71,7 @@ struct RoutePlannerView: View {
             HStack {
                 Text(formattedDistance)
                     .font(.headline)
-                    .foregroundStyle(viewModel.waypoints.count > 1 ? Color.routeTeal : .secondary)
+                    .foregroundStyle(viewModel.waypoints.count > 1 ? Color.kaidoDim : .secondary)
                 Spacer()
                 if viewModel.isMatching {
                     ProgressView()
@@ -108,7 +79,7 @@ struct RoutePlannerView: View {
             }
 
             Toggle("Bike Lanes", isOn: $showBikeLanes)
-                .tint(.routeTeal)
+                .tint(.kaidoDim)
 
             if showBikeLanes {
                 BikeLaneLegend(showsBackground: false)

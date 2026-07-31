@@ -2,6 +2,7 @@ import SwiftUI
 import SwiftData
 
 struct ContentView: View {
+    @Environment(\.modelContext) private var modelContext
     @State private var locationManager = LocationManager()
 
     var body: some View {
@@ -22,9 +23,15 @@ struct ContentView: View {
                 .tabItem {
                     Label("Bike", systemImage: "bicycle")
                 }
+
+            ProfileView()
+                .tabItem {
+                    Label("Profile", systemImage: "person.crop.circle")
+                }
         }
         .task {
             locationManager.requestWhenInUseAuthorization()
+            BikeProfileStore.ensureActiveProfile(in: modelContext)
         }
     }
 }

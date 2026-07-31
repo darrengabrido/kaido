@@ -92,6 +92,14 @@ struct AuthGateView: View {
             .font(.subheadline.weight(.medium))
             .foregroundStyle(.white.opacity(0.7))
             .padding(.top, 6)
+
+            if let errorMessage = viewModel.errorMessage {
+                Text(errorMessage)
+                    .font(.caption)
+                    .foregroundStyle(Color.statusCritical)
+                    .multilineTextAlignment(.center)
+                    .padding(.top, 4)
+            }
         }
         .opacity(appear ? 1 : 0)
         .offset(y: appear ? 0 : 24)
@@ -135,9 +143,10 @@ private struct AuroraBackground: View {
                     [1.0, 1.0]
                 ],
                 colors: [
+                    // Monochromatic violet aurora — keep the brand backdrop a single hue story.
                     .kaidoMidnight, .kaidoIndigo, .kaidoMidnight,
-                    .kaidoViolet, .kaidoIndigo, .routeTeal,
-                    .kaidoMidnight, .routeTeal.opacity(0.6), .kaidoMidnight
+                    .kaidoViolet, .kaidoIndigo, .kaidoVioletOnMap,
+                    .kaidoMidnight, .kaidoVioletOnMap.opacity(0.6), .kaidoMidnight
                 ]
             )
         }

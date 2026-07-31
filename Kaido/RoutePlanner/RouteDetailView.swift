@@ -7,6 +7,7 @@ struct RouteDetailView: View {
 
     @Environment(\.modelContext) private var modelContext
     @Environment(BikeBLEManager.self) private var bleManager
+    @Query(sort: \BikeProfile.lastConnectedAt, order: .reverse) private var bikeProfiles: [BikeProfile]
     @State private var viewport: Viewport
     @State private var navigationViewModel = NavigationViewModel()
     @State private var isPresentingNavigation = false
@@ -36,37 +37,7 @@ struct RouteDetailView: View {
         ZStack(alignment: .bottom) {
             Map(viewport: $viewport) {
                 if showBikeLanes {
-                    VectorSource(id: "streets-v8")
-                        .url("mapbox://mapbox.mapbox-streets-v8")
-                    // On-street painted bike lane — drawn on the road's own centerline (bike_lane field),
-                    // dashed so it reads as "lane within the road" rather than a separate path.
-                    LineLayer(id: "bike-onstreet-lane", source: "streets-v8")
-                        .sourceLayer("road")
-                        .filter(Exp(.any) {
-                            Exp(.eq) { Exp(.get) { "bike_lane" }; "yes" }
-                            Exp(.eq) { Exp(.get) { "bike_lane" }; "left" }
-                            Exp(.eq) { Exp(.get) { "bike_lane" }; "right" }
-                            Exp(.eq) { Exp(.get) { "bike_lane" }; "both" }
-                        })
-                        .lineColor(StyleColor(UIColor(Color.routeTealOnMap)))
-                        .lineWidth(3.0)
-                        .lineOpacity(0.95)
-                        .lineEmissiveStrength(1)
-                        .lineCap(.butt)
-                        .lineJoin(.round)
-                        .lineDashArray([2, 2])
-                        .slot(.top)
-                    // Dedicated, physically-separated cycle path — solid and thicker
-                    LineLayer(id: "bike-dedicated-path", source: "streets-v8")
-                        .sourceLayer("road")
-                        .filter(Exp(.eq) { Exp(.get) { "type" }; "cycleway" })
-                        .lineColor(StyleColor(UIColor(Color.routeTealOnMap)))
-                        .lineWidth(4.5)
-                        .lineOpacity(1.0)
-                        .lineEmissiveStrength(1)
-                        .lineCap(.round)
-                        .lineJoin(.round)
-                        .slot(.top)
+                    BikeLaneMapLayers()
                 }
 
                 if coordinates.count > 1 {
@@ -82,7 +53,7 @@ struct RouteDetailView: View {
                 } label: {
                     Image(systemName: "bicycle")
                         .font(.system(size: 16, weight: .medium))
-                        .foregroundStyle(showBikeLanes ? Color.routeTeal : Color.secondary)
+                        .foregroundStyle(showBikeLanes ? Color.kaidoDim : Color.secondary)
                         .frame(width: 44, height: 44)
                 }
                 .glassEffect(.regular, in: Circle())
@@ -100,8 +71,8 @@ struct RouteDetailView: View {
                     .font(.title2.bold())
 
                 HStack(spacing: 8) {
-                    StatTile(value: formattedDistance, label: "distance", tint: .routeTeal)
-                    StatTile(value: formattedElevation, label: "ft climb", tint: .effortCoral)
+                    StatTile(value: formattedDistance, label: "distance", tint: .kaidoDim)
+                    StatTile(value: formattedElevation, label: "ft climb", tint: .kaidoDim)
                 }
 
                 if let requestError = navigationViewModel.requestError {
@@ -110,8 +81,19 @@ struct RouteDetailView: View {
                         .foregroundStyle(.red)
                 }
 
+                Picker("Routing style", selection: $navigationViewModel.preference) {
+                    ForEach(RoutingPreference.allCases) { preference in
+                        Label(preference.title, systemImage: preference.systemImage)
+                            .tag(preference)
+                            .accessibilityLabel(preference.accessibilityLabel)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .disabled(navigationViewModel.isRequestingRoute)
+
                 Button {
                     Task {
+                        navigationViewModel.updateRideTimeProfile(activeRideTimeProfile)
                         await navigationViewModel.requestRoutes(waypointCoordinates: coordinates)
                         if navigationViewModel.navigationRoutes != nil {
                             isPresentingNavigation = true
@@ -137,6 +119,12 @@ struct RouteDetailView: View {
         }
         .navigationTitle(route.name)
         .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            navigationViewModel.updateRideTimeProfile(activeRideTimeProfile)
+        }
+        .onChange(of: activeRideTimeProfile) { _, profile in
+            navigationViewModel.updateRideTimeProfile(profile)
+        }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {
@@ -144,13 +132,17 @@ struct RouteDetailView: View {
                 } label: {
                     Image(systemName: route.isFavorite ? "star.fill" : "star")
                 }
-                .tint(.favoriteAmber)
+                .tint(.kaidoViolet)
             }
         }
         .fullScreenCover(isPresented: $isPresentingNavigation) {
             if let navigationRoutes = navigationViewModel.navigationRoutes {
                 ZStack(alignment: .bottomTrailing) {
-                    NavigationSessionView(navigationRoutes: navigationRoutes) { _ in
+                    NavigationSessionView(
+                        navigationRoutes: navigationRoutes,
+                        telemetry: bleManager.telemetry,
+                        rideTimeProfile: navigationViewModel.rideTimeProfile
+                    ) { _ in
                         logRide()
                         isPresentingNavigation = false
                         navigationViewModel.clear()
@@ -181,6 +173,10 @@ struct RouteDetailView: View {
         ride.endedAt = Date()
         ride.distanceMeters = route.distanceMeters
         modelContext.insert(ride)
+    }
+
+    private var activeRideTimeProfile: RideTimeProfile {
+        BikeProfileStore.activeProfile(in: bikeProfiles)?.rideTimeProfile ?? .defaultProfile
     }
 }
 
