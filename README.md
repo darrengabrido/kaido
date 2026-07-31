@@ -89,9 +89,9 @@ Before running it, confirm App Store Connect has **Kaido Ride** for bundle ID `c
 | `APPLE_DISTRIBUTION_CERTIFICATE_BASE64` | Base64-encoded `.p12` distribution certificate |
 | `APPLE_DISTRIBUTION_CERTIFICATE_PASSWORD` | Password used when exporting the `.p12` |
 | `APP_STORE_PROVISIONING_PROFILE_BASE64` | Base64-encoded App Store `.mobileprovision` for `com.oaktreehouse.kaido` |
-| `APP_STORE_CONNECT_KEY_ID` | App Store Connect API key ID |
+| `APP_STORE_CONNECT_KEY_ID` | App Store Connect API **Team** key ID (not an Individual key) |
 | `APP_STORE_CONNECT_ISSUER_ID` | App Store Connect API issuer ID |
-| `APP_STORE_CONNECT_API_KEY` | Full contents of the API key's `.p8` file |
+| `APP_STORE_CONNECT_API_KEY` | Full contents of that Team key's `.p8` file (including `BEGIN`/`END` lines) |
 | `SUPABASE_HOST` | Supabase host only (e.g. `abcdefgh.supabase.co`, no `https://`) |
 | `SUPABASE_ANON_KEY` | Supabase `anon`/`public` API key |
 | `SPOTIFY_CLIENT_ID` | Spotify app Client ID (Redirect URI must be `kaido://spotify-callback`) |
