@@ -92,8 +92,11 @@ Before running it, confirm App Store Connect has **Kaido Ride** for bundle ID `c
 | `APP_STORE_CONNECT_KEY_ID` | App Store Connect API key ID |
 | `APP_STORE_CONNECT_ISSUER_ID` | App Store Connect API issuer ID |
 | `APP_STORE_CONNECT_API_KEY` | Full contents of the API key's `.p8` file |
+| `SUPABASE_HOST` | Supabase host only (e.g. `abcdefgh.supabase.co`, no `https://`) |
+| `SUPABASE_ANON_KEY` | Supabase `anon`/`public` API key |
+| `SPOTIFY_CLIENT_ID` | Spotify app Client ID (Redirect URI must be `kaido://spotify-callback`) |
 
-`SUPABASE_HOST` and `SUPABASE_ANON_KEY` are optional GitHub secrets. The TestFlight workflow intentionally does not embed an OpenAI secret in the app binary; free-ride discovery uses its local fallback until AI requests are routed through a server-side endpoint.
+The TestFlight workflow intentionally does not embed an OpenAI secret in the app binary; free-ride discovery uses its local fallback until AI requests are routed through a server-side endpoint.
 
 After the workflow is available on your branch, open **Actions → Deploy to TestFlight → Run workflow**. A successful upload appears in App Store Connect after Apple's processing finishes.
 
