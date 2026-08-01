@@ -8,6 +8,7 @@ struct ProfileView: View {
         NavigationStack {
             List {
                 accountSection
+                rideTogetherSection
                 spotifySection
             }
             .navigationTitle("Profile")
@@ -37,6 +38,20 @@ struct ProfileView: View {
             }
         } header: {
             Text("Account")
+        }
+    }
+
+    private var rideTogetherSection: some View {
+        Section {
+            NavigationLink {
+                GroupRideCustomReplySettingsView()
+            } label: {
+                Label("Ride Together Quick Replies", systemImage: "bubble.left.and.bubble.right")
+            }
+        } header: {
+            Text("Ride Together")
+        } footer: {
+            Text("Customize the quick-reply buttons shown to your group during a ride.")
         }
     }
 

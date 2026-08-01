@@ -3,6 +3,7 @@ import SwiftData
 
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(RideTogetherDeepLinkRouter.self) private var rideTogetherDeepLinkRouter
     @State private var locationManager = LocationManager()
 
     var body: some View {
@@ -33,6 +34,24 @@ struct ContentView: View {
             locationManager.requestWhenInUseAuthorization()
             BikeProfileStore.ensureActiveProfile(in: modelContext)
         }
+        .fullScreenCover(isPresented: pendingInviteBinding) {
+            if let link = rideTogetherDeepLinkRouter.pendingInvite {
+                GroupRideJoinPreviewView(
+                    link: link,
+                    onJoined: { rideTogetherDeepLinkRouter.clearPendingInvite() },
+                    onDismiss: { rideTogetherDeepLinkRouter.clearPendingInvite() }
+                )
+            }
+        }
+    }
+
+    private var pendingInviteBinding: Binding<Bool> {
+        Binding(
+            get: { rideTogetherDeepLinkRouter.pendingInvite != nil },
+            set: { isPresented in
+                if !isPresented { rideTogetherDeepLinkRouter.clearPendingInvite() }
+            }
+        )
     }
 }
 
