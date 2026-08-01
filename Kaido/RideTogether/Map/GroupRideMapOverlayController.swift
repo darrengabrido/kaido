@@ -31,26 +31,14 @@ final class GroupRideMapOverlayController {
         self.sessionStore = sessionStore
 
         let circles = mapView.annotations.makeCircleAnnotationManager(id: "ride-together-rider-circles")
+        circles.circleEmissiveStrength = 1
         self.circleManager = circles
         let labels = mapView.annotations.makePointAnnotationManager(
             id: "ride-together-rider-labels",
             layerPosition: .above(circles.id)
         )
+        labels.textAllowOverlap = true
         self.labelManager = labels
-
-        // These handlers are stored and later invoked by MapboxMaps, not necessarily from a
-        // context the compiler already knows is main-actor — hop explicitly before touching
-        // `self`, same as everywhere else this codebase bridges an SDK callback onto the actor.
-        circles.tapHandler = { [weak self] annotations in
-            let annotationId = annotations.first?.id
-            Task { @MainActor in self?.handleTap(annotationId) }
-            return true
-        }
-        labels.tapHandler = { [weak self] annotations in
-            let annotationId = annotations.first?.id
-            Task { @MainActor in self?.handleTap(annotationId) }
-            return true
-        }
 
         start()
     }
@@ -119,7 +107,10 @@ final class GroupRideMapOverlayController {
             circle.circleStrokeColor = StyleColor(member.isHost ? .white : UIColor(white: 1, alpha: 0.85))
             circle.circleStrokeWidth = member.isHost ? 3 : 1.5
             circle.circleOpacity = opacity
-            circle.circleEmissiveStrength = 1
+            circle.tapHandler = { [weak self, idString] _ in
+                Task { @MainActor in self?.handleTap(idString) }
+                return true
+            }
             circles.append(circle)
 
             var label = PointAnnotation(id: idString, coordinate: location.coordinate)
@@ -127,7 +118,10 @@ final class GroupRideMapOverlayController {
             label.textSize = 11
             label.textColor = StyleColor(.white)
             label.textOpacity = opacity
-            label.textAllowOverlap = true
+            label.tapHandler = { [weak self, idString] _ in
+                Task { @MainActor in self?.handleTap(idString) }
+                return true
+            }
             labels.append(label)
         }
 
