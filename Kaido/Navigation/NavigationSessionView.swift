@@ -142,6 +142,7 @@ struct NavigationSessionView: UIViewControllerRepresentable {
         }
     }
 
+    @MainActor
     final class Coordinator: NSObject, NavigationViewControllerDelegate {
         let onDismiss: (Bool) -> Void
         /// Owned here so it outlives `makeUIViewController` and stays shared by both banners.
@@ -168,7 +169,9 @@ struct NavigationSessionView: UIViewControllerRepresentable {
             cameraCancellable = navigationMapView.navigationCamera.cameraStates
                 .receive(on: DispatchQueue.main)
                 .sink { [weak self] state in
-                    self?.handleCameraState(state)
+                    MainActor.assumeIsolated {
+                        self?.handleCameraState(state)
+                    }
                 }
             handleCameraState(navigationMapView.navigationCamera.currentCameraState)
         }
