@@ -313,25 +313,56 @@ jobs:
           BUNDLE_VERSION="$(cat "$RUNNER_TEMP/bundle-version.txt")"
           echo "Uploading $BUNDLE_ID $SHORT_VERSION ($BUNDLE_VERSION) → Apple ID $ASC_APP_APPLE_ID"
 
-          AUTH_ARGS=(
-            --apiKey "$APP_STORE_CONNECT_KEY_ID"
-            --apiIssuer "$APP_STORE_CONNECT_ISSUER_ID"
-          )
-          if [[ "${ASC_AUTH_MODE:-team}" == "individual" ]]; then
-            AUTH_ARGS+=(--api-key-subject user)
-          fi
-
           # Xcode 26 altool prefers --upload-package with explicit app identity.
           # Legacy --upload-app looks up the Apple ID from the bundle ID and 401s
           # when that lookup fails — even if the .p8 itself is valid.
-          xcrun altool \
-            --upload-package "$IPA" \
-            --platform ios \
-            --apple-id "$ASC_APP_APPLE_ID" \
-            --bundle-id "$BUNDLE_ID" \
-            --bundle-short-version-string "$SHORT_VERSION" \
-            --bundle-version "$BUNDLE_VERSION" \
-            "${AUTH_ARGS[@]}"
+          upload_package() {
+            local auth_args=("$@")
+            xcrun altool \
+              --upload-package "$IPA" \
+              --platform ios \
+              --apple-id "$ASC_APP_APPLE_ID" \
+              --bundle-id "$BUNDLE_ID" \
+              --bundle-short-version-string "$SHORT_VERSION" \
+              --bundle-version "$BUNDLE_VERSION" \
+              "${auth_args[@]}"
+          }
+
+          TEAM_AUTH=(
+            --apiKey "$APP_STORE_CONNECT_KEY_ID"
+            --apiIssuer "$APP_STORE_CONNECT_ISSUER_ID"
+          )
+          INDIVIDUAL_AUTH=(
+            --apiKey "$APP_STORE_CONNECT_KEY_ID"
+            # altool requires a non-empty issuer argument even for Individual
+            # keys; the key ID is the documented placeholder in user mode.
+            --apiIssuer "$APP_STORE_CONNECT_KEY_ID"
+            --api-key-subject user
+          )
+
+          if [[ "${ASC_AUTH_MODE:-team}" == "individual" ]]; then
+            upload_package "${INDIVIDUAL_AUTH[@]}"
+          else
+            set +e
+            upload_package "${TEAM_AUTH[@]}" \
+              > "$RUNNER_TEMP/team-upload.log" 2>&1
+            upload_status=$?
+            set -e
+            cat "$RUNNER_TEMP/team-upload.log"
+
+            if [[ $upload_status -eq 0 ]]; then
+              exit 0
+            fi
+
+            if grep -Eq 'NOT_AUTHORIZED|Unable to authenticate|status code 401' \
+              "$RUNNER_TEMP/team-upload.log"
+            then
+              echo "::warning::Team-key upload was rejected with 401; retrying as an Individual API key."
+              upload_package "${INDIVIDUAL_AUTH[@]}"
+            else
+              exit "$upload_status"
+            fi
+          fi
 
       - name: Clean up signing keychain
         if: always()
