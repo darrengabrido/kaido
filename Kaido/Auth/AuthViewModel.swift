@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import Auth
 import Supabase
 
@@ -23,27 +24,94 @@ final class AuthViewModel {
         }
     }
 
+    enum PasswordStrength: Int, Comparable {
+        case weak, fair, strong
+
+        static func < (lhs: PasswordStrength, rhs: PasswordStrength) -> Bool { lhs.rawValue < rhs.rawValue }
+
+        var label: String {
+            switch self {
+            case .weak: return "Weak"
+            case .fair: return "Fair"
+            case .strong: return "Strong"
+            }
+        }
+
+        var color: Color {
+            switch self {
+            case .weak: return .statusCritical
+            case .fair: return .statusCaution
+            case .strong: return .statusGood
+            }
+        }
+    }
+
     var mode: Mode = .signIn {
         didSet {
             errorMessage = nil
             pendingEmailConfirmation = false
+            resetLinkSent = false
         }
     }
 
     var email = ""
     var password = ""
+    var confirmPassword = ""
     var isLoading = false
     var errorMessage: String?
     var pendingEmailConfirmation = false
 
+    var isSendingResetLink = false
+    var resetLinkSent = false
+
+    /// `nil` while the field is empty (no error yet), otherwise a user-facing message.
+    var emailError: String? {
+        guard !email.isEmpty else { return nil }
+        return isEmailValid ? nil : "Enter a valid email address"
+    }
+
+    var passwordError: String? {
+        guard !password.isEmpty else { return nil }
+        return password.count >= 6 ? nil : "Use at least 6 characters"
+    }
+
+    var confirmPasswordError: String? {
+        guard mode == .signUp, !confirmPassword.isEmpty else { return nil }
+        return confirmPassword == password ? nil : "Passwords don't match"
+    }
+
+    var passwordStrength: PasswordStrength {
+        var score = 0
+        if password.count >= 8 { score += 1 }
+        if password.count >= 12 { score += 1 }
+        if password.range(of: "[0-9]", options: .regularExpression) != nil { score += 1 }
+        if password.range(of: "[^a-zA-Z0-9]", options: .regularExpression) != nil { score += 1 }
+        if password.range(of: "[A-Z]", options: .regularExpression) != nil,
+           password.range(of: "[a-z]", options: .regularExpression) != nil {
+            score += 1
+        }
+        switch score {
+        case 0...1: return .weak
+        case 2...3: return .fair
+        default: return .strong
+        }
+    }
+
+    private var isEmailValid: Bool {
+        email.contains("@") && email.contains(".") && email.count > 4
+    }
+
     var isValid: Bool {
-        email.contains("@") && email.count > 3 && password.count >= 6
+        guard isEmailValid, password.count >= 6 else { return false }
+        guard mode == .signUp else { return true }
+        return confirmPassword == password
     }
 
     /// Clears transient state before showing the email form for a fresh attempt.
     func reset() {
         errorMessage = nil
         pendingEmailConfirmation = false
+        resetLinkSent = false
     }
 
     func submit() async {
@@ -66,6 +134,30 @@ final class AuthViewModel {
                     pendingEmailConfirmation = true
                 }
             }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Sends a password-recovery email via Supabase's hosted flow. The link opens a
+    /// Supabase-hosted page rather than deep-linking back into Kaido, since the app doesn't
+    /// yet register a URL scheme for auth callbacks.
+    func sendPasswordReset() async {
+        guard let client = KaidoSupabaseClient.shared else {
+            errorMessage = Self.notConfiguredMessage
+            return
+        }
+        guard isEmailValid else {
+            errorMessage = "Enter your account email first"
+            return
+        }
+        isSendingResetLink = true
+        errorMessage = nil
+        defer { isSendingResetLink = false }
+
+        do {
+            try await client.auth.resetPasswordForEmail(email)
+            resetLinkSent = true
         } catch {
             errorMessage = error.localizedDescription
         }
