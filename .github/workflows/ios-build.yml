@@ -74,6 +74,6 @@ jobs:
             -project Kaido.xcodeproj \
             -scheme Kaido \
             -configuration Debug \
-            -destination "platform=iOS Simulator,name=iPhone 16,OS=latest" \
+            -destination "platform=iOS Simulator,name=iPhone 17,OS=latest" \
             CODE_SIGNING_ALLOWED=NO \
             test
