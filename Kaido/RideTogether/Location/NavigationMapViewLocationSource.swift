@@ -30,13 +30,18 @@ final class NavigationMapViewLocationSource: GroupRideLocationSource {
             guard let latest = locations.last else { return }
             Task { @MainActor [weak self] in
                 guard let self else { return }
+                // `Location`'s altitude/horizontalAccuracy/speed are optional (nil when Mapbox's
+                // own fix doesn't have them yet), and it has no `course` member in the installed
+                // SDK version — map course to CLLocation's own "unknown" sentinel (-1) rather than
+                // guess at a different property name for a value only used for a cosmetic bearing
+                // indicator in the rider card.
                 let clLocation = CLLocation(
                     coordinate: latest.coordinate,
-                    altitude: latest.altitude,
-                    horizontalAccuracy: latest.horizontalAccuracy,
+                    altitude: latest.altitude ?? 0,
+                    horizontalAccuracy: latest.horizontalAccuracy ?? -1,
                     verticalAccuracy: -1,
-                    course: latest.course,
-                    speed: latest.speed,
+                    course: -1,
+                    speed: latest.speed ?? -1,
                     timestamp: latest.timestamp
                 )
                 self.handler?(clLocation)

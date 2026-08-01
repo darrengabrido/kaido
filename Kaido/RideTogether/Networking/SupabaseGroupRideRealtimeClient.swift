@@ -84,7 +84,7 @@ actor SupabaseGroupRideRealtimeClient: GroupRideRealtimeClient {
 
         do {
             try await newChannel.subscribeWithError()
-            try? await newChannel.track(state: ["member_id": .string(memberId.uuidString)])
+            await newChannel.track(state: ["member_id": .string(memberId.uuidString)])
             onConnectionStateChange(.connected)
         } catch {
             onConnectionStateChange(.failed(error.localizedDescription))
