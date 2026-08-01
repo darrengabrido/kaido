@@ -16,7 +16,7 @@ struct MapboxMapView: View {
     @Query(sort: \BikeProfile.lastConnectedAt, order: .reverse) private var bikeProfiles: [BikeProfile]
     @Query(sort: \SavedPlace.createdAt) private var savedPlaces: [SavedPlace]
 
-    @State private var viewport: Viewport = .followPuck(zoom: 15, bearing: .heading, pitch: 0)
+    @State private var viewport: Viewport = MapViewportFollow.live(bottomPadding: 420)
     @State private var showBikeLanes = true
     @State private var isFreeRideEnabled = false
     @State private var searchViewModel = MapSearchViewModel()
@@ -37,6 +37,15 @@ struct MapboxMapView: View {
 
     private static let placeDetailsCardDetents: [CGFloat] = [190, 420, 560]
 
+    private var isFollowingUser: Bool {
+        viewport.followPuck != nil
+    }
+
+    private var followBottomPadding: CGFloat {
+        // Keep the puck above the drawer chrome with a little breathing room.
+        resolvedPlaceDetailsCardHeight + 16
+    }
+
     /// Free Ride is explicitly enabled and the map is available for discovery.
     private var shouldShowDiscover: Bool {
         isFreeRideEnabled
@@ -49,7 +58,9 @@ struct MapboxMapView: View {
     var body: some View {
         ZStack(alignment: .top) {
             Map(viewport: $viewport) {
-                Puck2D(bearing: .heading)
+                // Course matches travel direction used by follow-puck; heading made the
+                // puck spin when the phone was still or magnetically noisy on a mount.
+                Puck2D(bearing: .course)
 
                 if showBikeLanes {
                     BikeLaneMapLayers()
@@ -96,42 +107,48 @@ struct MapboxMapView: View {
             ))
             .ignoresSafeArea()
 
-            // Cycling map options: infrastructure overlay and opt-in Free Ride discovery.
-            Menu {
-                Button {
-                    showBikeLanes.toggle()
-                } label: {
-                    Label(
-                        "Bike Lanes & Paths",
-                        systemImage: showBikeLanes ? "checkmark.circle.fill" : "circle"
-                    )
+            // Recenter sits above the cycling menu so riders can recover follow after a pan.
+            VStack(spacing: 10) {
+                RecenterMapButton(isFollowing: isFollowingUser) {
+                    MapViewportFollow.recenter($viewport, bottomPadding: followBottomPadding)
                 }
 
-                Button {
-                    setFreeRideEnabled(!isFreeRideEnabled)
+                Menu {
+                    Button {
+                        showBikeLanes.toggle()
+                    } label: {
+                        Label(
+                            "Bike Lanes & Paths",
+                            systemImage: showBikeLanes ? "checkmark.circle.fill" : "circle"
+                        )
+                    }
+
+                    Button {
+                        setFreeRideEnabled(!isFreeRideEnabled)
+                    } label: {
+                        Label(
+                            "Free Ride",
+                            systemImage: isFreeRideEnabled ? "checkmark.circle.fill" : "circle"
+                        )
+                    }
                 } label: {
-                    Label(
-                        "Free Ride",
-                        systemImage: isFreeRideEnabled ? "checkmark.circle.fill" : "circle"
-                    )
+                    Image(systemName: "bicycle")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundStyle(
+                            isFreeRideEnabled
+                                ? Color.kaidoViolet
+                                : (showBikeLanes ? Color.kaidoDim : Color.secondary)
+                        )
+                        .frame(width: 44, height: 44)
                 }
-            } label: {
-                Image(systemName: "bicycle")
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundStyle(
-                        isFreeRideEnabled
-                            ? Color.kaidoViolet
-                            : (showBikeLanes ? Color.kaidoDim : Color.secondary)
-                    )
-                    .frame(width: 44, height: 44)
+                .glassEffect(.regular, in: Circle())
+                .accessibilityLabel("Cycling map options")
+                .accessibilityHint("Choose bike lanes and paths or Free Ride")
             }
-            .glassEffect(.regular, in: Circle())
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
             .padding(.trailing, 16)
             .padding(.bottom, 16)
             .offset(y: -(resolvedPlaceDetailsCardHeight + 8))
-            .accessibilityLabel("Cycling map options")
-            .accessibilityHint("Choose bike lanes and paths or Free Ride")
 
             // With search moved into the drawer, the legend can occupy the top-right corner.
             if showBikeLanes && searchViewModel.results.isEmpty {
@@ -806,6 +823,11 @@ struct MapboxMapView: View {
         withAnimation(.interactiveSpring(response: 0.38, dampingFraction: 0.86, blendDuration: 0.18)) {
             placeDetailsCardHeight = nearest
         }
+        // Follow framing depends on drawer height — keep the puck above chrome.
+        // Set outside the spring so we don't animate followPuck with a non-viewport curve.
+        if viewport.followPuck != nil {
+            viewport = MapViewportFollow.live(bottomPadding: nearest + 16)
+        }
     }
 
     private var placeDetailsSizeLabel: String {
@@ -832,8 +854,12 @@ struct MapboxMapView: View {
             return
         }
 
+        let nextHeight = Self.placeDetailsCardDetents[nextIndex]
         withAnimation(.interactiveSpring(response: 0.38, dampingFraction: 0.86, blendDuration: 0.18)) {
-            placeDetailsCardHeight = Self.placeDetailsCardDetents[nextIndex]
+            placeDetailsCardHeight = nextHeight
+        }
+        if viewport.followPuck != nil {
+            viewport = MapViewportFollow.live(bottomPadding: nextHeight + 16)
         }
     }
 
@@ -1072,8 +1098,9 @@ struct MapboxMapView: View {
         navigationViewModel.clear()
         isSearchFocused = false
         snapPlaceDetailsCard(to: 420)
-        withAnimation {
+        withViewportAnimation(.default(maxDuration: 1)) {
             viewport = .camera(center: result.coordinate, zoom: 15)
+                .padding(.bottom, followBottomPadding)
         }
         fetchRoutes(to: result)
     }
@@ -1150,9 +1177,7 @@ struct MapboxMapView: View {
         searchViewModel.clearSelection()
         navigationViewModel.clear()
         snapPlaceDetailsCard(to: 420)
-        withAnimation {
-            viewport = .followPuck(zoom: 15, bearing: .heading, pitch: 0)
-        }
+        MapViewportFollow.recenter($viewport, bottomPadding: followBottomPadding)
     }
 
     private func setFreeRideEnabled(_ enabled: Bool) {
@@ -1186,8 +1211,16 @@ struct MapboxMapView: View {
         guard let main = navigationViewModel.routeOptions.first(where: { $0.isMain }),
               main.coordinates.count > 1
         else { return }
-        withAnimation {
-            viewport = .overview(geometry: LineString(main.coordinates))
+        withViewportAnimation(.default(maxDuration: 1.2)) {
+            viewport = .overview(
+                geometry: LineString(main.coordinates),
+                geometryPadding: EdgeInsets(
+                    top: 72,
+                    leading: 48,
+                    bottom: followBottomPadding,
+                    trailing: 48
+                )
+            )
         }
     }
 

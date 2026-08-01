@@ -1,6 +1,8 @@
 import SwiftUI
+import Combine
 import MapboxNavigationCore
 import MapboxNavigationUIKit
+import UIKit
 
 struct NavigationSessionView: UIViewControllerRepresentable {
     let navigationRoutes: NavigationRoutes
@@ -33,37 +35,49 @@ struct NavigationSessionView: UIViewControllerRepresentable {
         )
         viewController.delegate = context.coordinator
         bottomBanner.navigationViewController = viewController
+        context.coordinator.navigationViewController = viewController
 
         // Don't touch `viewController.view` here — loading it starts active guidance before
         // the fullScreenCover has presented (Mapbox documents this as a footgun). Install
-        // the Now Playing bar on the next run loop once the VC is in the hierarchy.
+        // chrome on the next run loop once the VC is in the hierarchy.
         DispatchQueue.main.async {
-            self.addMediaPlayerBar(to: viewController)
+            self.addNavigationChrome(to: viewController, coordinator: context.coordinator)
             if let groupRideSessionStore, groupRideSessionStore.hasActiveRide {
-                // `attachGroupRide` is main-actor isolated (it touches `GroupRideSessionStore`);
-                // wrapping unambiguously bridges into that isolation regardless of whether this
-                // `DispatchQueue.main.async` closure itself is inferred `@MainActor`.
-                Task { @MainActor in
-                    context.coordinator.attachGroupRide(sessionStore: groupRideSessionStore, to: viewController)
-                }
+                context.coordinator.attachGroupRide(sessionStore: groupRideSessionStore, to: viewController)
             }
         }
         return viewController
     }
 
-    /// Docks the Now Playing bar just above Mapbox's own bottom banner. Anchoring to
-    /// `bottomBannerContainerView` rather than the safe area keeps it clear of the ETA/End
-    /// controls without hard-coding that banner's height.
-    private func addMediaPlayerBar(to viewController: NavigationViewController) {
+    /// Docks the Now Playing bar and a Kaido recenter control above Mapbox's bottom banner.
+    /// The stock Resume button sits on the leading edge of that same band and ends up under
+    /// the media bar, so we hide it and expose our own trailing control instead.
+    private func addNavigationChrome(
+        to viewController: NavigationViewController,
+        coordinator: Coordinator
+    ) {
+        Self.hideStockResumeButtons(in: viewController.view)
+
         let barController = UIHostingController(
             rootView: MediaPlayerBar(manager: MediaPlayerManager.shared)
         )
         barController.view.backgroundColor = .clear
         barController.view.translatesAutoresizingMaskIntoConstraints = false
 
+        let recenterController = UIHostingController(
+            rootView: NavigationRecenterButton(isFollowing: true) {
+                coordinator.recenterOnUser()
+            }
+        )
+        recenterController.view.backgroundColor = .clear
+        recenterController.view.translatesAutoresizingMaskIntoConstraints = false
+
         viewController.addChild(barController)
+        viewController.addChild(recenterController)
         viewController.view.addSubview(barController.view)
+        viewController.view.addSubview(recenterController.view)
         barController.didMove(toParent: viewController)
+        recenterController.didMove(toParent: viewController)
 
         let bottomBanner = viewController.navigationView.bottomBannerContainerView
         NSLayoutConstraint.activate([
@@ -78,20 +92,75 @@ struct NavigationSessionView: UIViewControllerRepresentable {
             barController.view.bottomAnchor.constraint(
                 equalTo: bottomBanner.topAnchor,
                 constant: -8
-            )
+            ),
+
+            recenterController.view.trailingAnchor.constraint(
+                equalTo: viewController.view.trailingAnchor,
+                constant: -16
+            ),
+            recenterController.view.bottomAnchor.constraint(
+                equalTo: barController.view.topAnchor,
+                constant: -12
+            ),
+            recenterController.view.widthAnchor.constraint(equalToConstant: 44),
+            recenterController.view.heightAnchor.constraint(equalToConstant: 44)
         ])
+
+        let paddingProbe = NavigationPaddingProbeView()
+        paddingProbe.translatesAutoresizingMaskIntoConstraints = false
+        paddingProbe.onLayout = { [weak coordinator] in
+            coordinator?.refreshViewportPadding()
+        }
+        viewController.view.insertSubview(paddingProbe, at: 0)
+        NSLayoutConstraint.activate([
+            paddingProbe.widthAnchor.constraint(equalToConstant: 0),
+            paddingProbe.heightAnchor.constraint(equalToConstant: 0),
+            paddingProbe.leadingAnchor.constraint(equalTo: viewController.view.leadingAnchor),
+            paddingProbe.topAnchor.constraint(equalTo: viewController.view.topAnchor)
+        ])
+
+        coordinator.mediaPlayerView = barController.view
+        coordinator.recenterHostingController = recenterController
+        coordinator.startCameraObservation()
+        coordinator.refreshViewportPadding()
     }
 
-    func updateUIViewController(_ uiViewController: NavigationViewController, context: Context) {}
+    func updateUIViewController(_ uiViewController: NavigationViewController, context: Context) {
+        // OrnamentsController re-shows Resume whenever the camera leaves following.
+        Self.hideStockResumeButtons(in: uiViewController.view)
+        context.coordinator.refreshViewportPadding()
+    }
 
     func makeCoordinator() -> Coordinator {
         Coordinator(onDismiss: onDismiss, rideTimeProfile: rideTimeProfile)
     }
 
+    /// `NavigationView.resumeButton` is internal to Mapbox, so we hide by type instead.
+    fileprivate static func hideStockResumeButtons(in root: UIView) {
+        var stack: [UIView] = [root]
+        while let view = stack.popLast() {
+            if view is ResumeButton {
+                view.isHidden = true
+                view.alpha = 0
+                view.isUserInteractionEnabled = false
+            }
+            stack.append(contentsOf: view.subviews)
+        }
+    }
+
+    @MainActor
     final class Coordinator: NSObject, NavigationViewControllerDelegate {
         let onDismiss: (Bool) -> Void
         /// Owned here so it outlives `makeUIViewController` and stays shared by both banners.
         let bannerModel: NavigationBannerModel
+
+        weak var navigationViewController: NavigationViewController?
+        weak var mediaPlayerView: UIView?
+        weak var recenterHostingController: UIHostingController<NavigationRecenterButton>?
+
+        private var cameraCancellable: AnyCancellable?
+        private var lastAppliedPadding: UIEdgeInsets?
+        private var lastFollowState: Bool?
 
         private var groupRideSessionStore: GroupRideSessionStore?
         private var groupRideOverlayController: GroupRideMapOverlayController?
@@ -103,6 +172,88 @@ struct NavigationSessionView: UIViewControllerRepresentable {
         ) {
             self.onDismiss = onDismiss
             bannerModel = NavigationBannerModel(rideTimeProfile: rideTimeProfile)
+        }
+
+        @MainActor
+        func startCameraObservation() {
+            guard let navigationMapView = navigationViewController?.navigationMapView else { return }
+            cameraCancellable = navigationMapView.navigationCamera.cameraStates
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] state in
+                    MainActor.assumeIsolated {
+                        self?.handleCameraState(state)
+                    }
+                }
+            handleCameraState(navigationMapView.navigationCamera.currentCameraState)
+        }
+
+        @MainActor
+        func recenterOnUser() {
+            navigationViewController?.navigationMapView?.navigationCamera
+                .update(cameraState: .following)
+            if let root = navigationViewController?.view {
+                NavigationSessionView.hideStockResumeButtons(in: root)
+            }
+        }
+
+        /// Mapbox's padding accounts for the glass banners but not the Spotify bar docked
+        /// above them. Without the extra inset the follow camera parks the puck under that bar.
+        @MainActor
+        func refreshViewportPadding() {
+            guard let navigationViewController,
+                  let navigationMapView = navigationViewController.navigationMapView
+            else { return }
+
+            let navigationView = navigationViewController.navigationView
+            let safe = navigationMapView.safeAreaInsets
+            let topBannerHeight = navigationView.topBannerContainerView.bounds.height
+            let bottomBannerHeight = navigationView.bottomBannerContainerView.bounds.height
+            let wayNameHeight = navigationView.wayNameView.bounds.height
+            let mediaHeight = mediaPlayerView?.bounds.height ?? 56
+            let mediaGap: CGFloat = 8
+            let floatingWidth = navigationViewController.floatingButtons?
+                .map(\.bounds.width)
+                .max() ?? 0
+
+            let topPadding = max(topBannerHeight - safe.top, 0) + 10
+            let bottomPadding = max(bottomBannerHeight - safe.bottom, 0)
+                + wayNameHeight
+                + mediaHeight
+                + mediaGap
+                + 10
+
+            let padding = UIEdgeInsets(
+                top: topPadding,
+                left: 0,
+                bottom: bottomPadding,
+                right: floatingWidth
+            )
+
+            let currentViewportPadding = navigationMapView.viewportPadding
+
+            // Avoid a layout feedback loop: only write when Mapbox (or us) drifted.
+            if lastAppliedPadding != padding || currentViewportPadding != padding {
+                lastAppliedPadding = padding
+                navigationMapView.viewportPadding = padding
+            }
+
+            NavigationSessionView.hideStockResumeButtons(in: navigationViewController.view)
+        }
+
+        @MainActor
+        private func handleCameraState(_ state: NavigationCameraState) {
+            let following = state == .following
+            if let root = navigationViewController?.view {
+                NavigationSessionView.hideStockResumeButtons(in: root)
+            }
+
+            if lastFollowState != following {
+                lastFollowState = following
+                recenterHostingController?.rootView = NavigationRecenterButton(isFollowing: following) { [weak self] in
+                    self?.recenterOnUser()
+                }
+            }
+            refreshViewportPadding()
         }
 
         /// Wires Ride Together into this navigation session's existing map: a location source
@@ -157,14 +308,31 @@ struct NavigationSessionView: UIViewControllerRepresentable {
             _ navigationViewController: NavigationViewController,
             byCanceling canceled: Bool
         ) {
-            // Matches this codebase's existing pattern for bridging a delegate callback of
-            // uncertain actor isolation into main-actor cleanup (see `BikeBLEManager`'s
-            // CoreBluetooth delegate methods) rather than assuming this method already runs
-            // on the main actor.
-            Task { @MainActor [weak self] in
-                self?.detachGroupRideIfNeeded()
-            }
+            cameraCancellable?.cancel()
+            detachGroupRideIfNeeded()
             onDismiss(canceled)
         }
+    }
+}
+
+/// Glass recenter control hosted inside the UIKit navigation session.
+struct NavigationRecenterButton: View {
+    let isFollowing: Bool
+    let action: () -> Void
+
+    var body: some View {
+        RecenterMapButton(isFollowing: isFollowing, action: action)
+            .opacity(isFollowing ? 0.55 : 1)
+    }
+}
+
+/// Zero-size probe so we can re-apply viewport padding after Mapbox's own
+/// `viewDidAppear` / layout pass overwrites `navigationMapView.viewportPadding`.
+private final class NavigationPaddingProbeView: UIView {
+    var onLayout: (() -> Void)?
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        onLayout?()
     }
 }

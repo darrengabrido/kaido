@@ -7,16 +7,20 @@ struct RoutePlannerView: View {
     @Environment(\.modelContext) private var modelContext
 
     @State private var viewModel = RoutePlannerViewModel()
-    @State private var viewport: Viewport = .followPuck(zoom: 15, bearing: .heading, pitch: 0)
+    @State private var viewport: Viewport = MapViewportFollow.live(bottomPadding: 220)
     @State private var isShowingNameAlert = false
     @State private var routeName = ""
     @State private var showBikeLanes = true
+
+    private var isFollowingUser: Bool {
+        viewport.followPuck != nil
+    }
 
     var body: some View {
         NavigationStack {
             ZStack(alignment: .bottom) {
                 Map(viewport: $viewport) {
-                    Puck2D(bearing: .heading)
+                    Puck2D(bearing: .course)
 
                     if showBikeLanes {
                         BikeLaneMapLayers()
@@ -40,6 +44,13 @@ struct RoutePlannerView: View {
                     viewModel.addWaypoint(at: context.coordinate)
                 }
                 .ignoresSafeArea()
+
+                RecenterMapButton(isFollowing: isFollowingUser) {
+                    MapViewportFollow.recenter($viewport, bottomPadding: 220)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                .padding(.trailing, 16)
+                .padding(.bottom, 220)
 
                 controlPanel
             }

@@ -12,6 +12,8 @@ concurrency:
 
 env:
   APP_BUNDLE_ID: com.oaktreehouse.kaido
+  # App Store Connect "Apple ID" for Kaido Ride (App Information), not an email.
+  ASC_APP_APPLE_ID: "6796058480"
 
 jobs:
   deploy:
@@ -162,35 +164,80 @@ jobs:
           fi
 
           # altool searches these locations; set API_PRIVATE_KEYS_DIR explicitly too.
+          # Install both Team (AuthKey_) and Individual (ApiKey_) filenames.
           KEYS_DIR="$HOME/.appstoreconnect/private_keys"
           mkdir -p "$KEYS_DIR" "$HOME/private_keys" "$HOME/.private_keys"
           # Ensure the PEM ends with a newline (required for valid JWT signing).
           printf '%s\n' "$KEY_PEM" > "$KEYS_DIR/AuthKey_${KEY_ID}.p8"
-          cp "$KEYS_DIR/AuthKey_${KEY_ID}.p8" "$HOME/private_keys/AuthKey_${KEY_ID}.p8"
-          cp "$KEYS_DIR/AuthKey_${KEY_ID}.p8" "$HOME/.private_keys/AuthKey_${KEY_ID}.p8"
-          chmod 0600 "$KEYS_DIR/AuthKey_${KEY_ID}.p8" \
-            "$HOME/private_keys/AuthKey_${KEY_ID}.p8" \
-            "$HOME/.private_keys/AuthKey_${KEY_ID}.p8"
+          cp "$KEYS_DIR/AuthKey_${KEY_ID}.p8" "$KEYS_DIR/ApiKey_${KEY_ID}.p8"
+          for dest in "$HOME/private_keys" "$HOME/.private_keys"; do
+            cp "$KEYS_DIR/AuthKey_${KEY_ID}.p8" "$dest/AuthKey_${KEY_ID}.p8"
+            cp "$KEYS_DIR/ApiKey_${KEY_ID}.p8" "$dest/ApiKey_${KEY_ID}.p8"
+            chmod 0600 "$dest/AuthKey_${KEY_ID}.p8" "$dest/ApiKey_${KEY_ID}.p8"
+          done
+          chmod 0600 "$KEYS_DIR/AuthKey_${KEY_ID}.p8" "$KEYS_DIR/ApiKey_${KEY_ID}.p8"
           echo "API_PRIVATE_KEYS_DIR=$KEYS_DIR" >> "$GITHUB_ENV"
 
-          echo "Installed AuthKey_${KEY_ID}.p8 ($(wc -c < "$KEYS_DIR/AuthKey_${KEY_ID}.p8" | tr -d ' ') bytes)"
+          echo "Installed AuthKey/ApiKey_${KEY_ID}.p8 ($(wc -c < "$KEYS_DIR/AuthKey_${KEY_ID}.p8" | tr -d ' ') bytes)"
 
       - name: Verify App Store Connect API auth
         run: |
-          # Fail fast with a clearer signal than upload's generic 401.
-          if ! xcrun altool --list-apps \
-            --apiKey "$APP_STORE_CONNECT_KEY_ID" \
-            --apiIssuer "$APP_STORE_CONNECT_ISSUER_ID" \
-            --output-format json > "$RUNNER_TEMP/asc-apps.json" 2>"$RUNNER_TEMP/asc-apps.err"
-          then
-            echo "::error::App Store Connect API auth failed. Confirm APP_STORE_CONNECT_KEY_ID, APP_STORE_CONNECT_ISSUER_ID, and APP_STORE_CONNECT_API_KEY are a matching Team API key (not Individual), Active, and Admin/App Manager."
+          list_apps() {
+            local extra_args=("$@")
+            xcrun altool --list-apps \
+              --apiKey "$APP_STORE_CONNECT_KEY_ID" \
+              --apiIssuer "$APP_STORE_CONNECT_ISSUER_ID" \
+              "${extra_args[@]}" \
+              --output-format json \
+              > "$RUNNER_TEMP/asc-apps.json" 2>"$RUNNER_TEMP/asc-apps.err"
+          }
+
+          AUTH_MODE=team
+          if ! list_apps; then
+            echo "Team-key list-apps failed; retrying as Individual key (--api-key-subject user)…"
             cat "$RUNNER_TEMP/asc-apps.err" || true
-            exit 1
+            if list_apps --api-key-subject user; then
+              AUTH_MODE=individual
+            else
+              echo "::error::App Store Connect API auth failed for both Team and Individual key modes."
+              echo "Key ID length: ${#APP_STORE_CONNECT_KEY_ID}; Issuer ID length: ${#APP_STORE_CONNECT_ISSUER_ID}"
+              cat "$RUNNER_TEMP/asc-apps.err" || true
+              exit 1
+            fi
           fi
-          if ! grep -q 'com.oaktreehouse.kaido' "$RUNNER_TEMP/asc-apps.json"; then
-            echo "::warning::Authenticated, but com.oaktreehouse.kaido was not returned by --list-apps. Confirm Kaido Ride exists under this team in App Store Connect."
+
+          echo "ASC_AUTH_MODE=$AUTH_MODE" >> "$GITHUB_ENV"
+          echo "list-apps succeeded using $AUTH_MODE auth"
+          # Xcode 26.5 can exit successfully while writing no list-apps payload.
+          # That is inconclusive, not an auth failure; the explicit
+          # --upload-package command below is the authoritative check.
+          if [[ ! -s "$RUNNER_TEMP/asc-apps.json" ]]; then
+            echo "::warning::altool list-apps returned an empty payload; continuing to upload-package with Kaido's explicit Apple ID."
+            cat "$RUNNER_TEMP/asc-apps.err" || true
+          else
+            # Safe to print: no secrets, helps confirm which apps this key can see.
+            python3 - <<'PY'
+          import json, os, pathlib, sys
+          path = pathlib.Path(os.environ["RUNNER_TEMP"]) / "asc-apps.json"
+          text = path.read_text(errors="replace")
+          print(text[:4000])
+          try:
+              data = json.loads(text)
+          except Exception as exc:
+              print(f"::error::list-apps JSON parse failed: {exc}")
+              sys.exit(1)
+          blob = json.dumps(data)
+          if "com.oaktreehouse.kaido" not in blob and "6796058480" not in blob:
+              print(
+                  "::error::API key authenticated, but Kaido "
+                  "(com.oaktreehouse.kaido / Apple ID 6796058480) is not visible "
+                  "to this key. Create/reuse a Team key on the same App Store "
+                  "Connect team that owns Kaido Ride."
+              )
+              sys.exit(1)
+          print("Kaido is visible to this API key")
+          PY
           fi
-          echo "App Store Connect API auth OK"
 
       - name: Generate Xcode project
         run: xcodegen generate
@@ -251,17 +298,71 @@ jobs:
           test -f "$RUNNER_TEMP/export/Kaido.ipa"
 
       - name: Upload to TestFlight
-        env:
-          APP_STORE_CONNECT_KEY_ID: ${{ env.APP_STORE_CONNECT_KEY_ID }}
-          APP_STORE_CONNECT_ISSUER_ID: ${{ env.APP_STORE_CONNECT_ISSUER_ID }}
-          API_PRIVATE_KEYS_DIR: ${{ env.API_PRIVATE_KEYS_DIR }}
         run: |
-          xcrun altool \
-            --upload-app \
-            --type ios \
-            --file "$RUNNER_TEMP/export/Kaido.ipa" \
-            --apiKey "$APP_STORE_CONNECT_KEY_ID" \
+          IPA="$RUNNER_TEMP/export/Kaido.ipa"
+          PAYLOAD_DIR="$RUNNER_TEMP/ipa-payload"
+          rm -rf "$PAYLOAD_DIR"
+          mkdir -p "$PAYLOAD_DIR"
+          unzip -q -o "$IPA" -d "$PAYLOAD_DIR"
+          INFO_PLIST="$(echo "$PAYLOAD_DIR"/Payload/*.app/Info.plist)"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$INFO_PLIST" > "$RUNNER_TEMP/bundle-id.txt"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$INFO_PLIST" > "$RUNNER_TEMP/short-version.txt"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$INFO_PLIST" > "$RUNNER_TEMP/bundle-version.txt"
+          BUNDLE_ID="$(cat "$RUNNER_TEMP/bundle-id.txt")"
+          SHORT_VERSION="$(cat "$RUNNER_TEMP/short-version.txt")"
+          BUNDLE_VERSION="$(cat "$RUNNER_TEMP/bundle-version.txt")"
+          echo "Uploading $BUNDLE_ID $SHORT_VERSION ($BUNDLE_VERSION) → Apple ID $ASC_APP_APPLE_ID"
+
+          # Xcode 26 altool prefers --upload-package with explicit app identity.
+          # Legacy --upload-app looks up the Apple ID from the bundle ID and 401s
+          # when that lookup fails — even if the .p8 itself is valid.
+          upload_package() {
+            local auth_args=("$@")
+            xcrun altool \
+              --upload-package "$IPA" \
+              --platform ios \
+              --apple-id "$ASC_APP_APPLE_ID" \
+              --bundle-id "$BUNDLE_ID" \
+              --bundle-short-version-string "$SHORT_VERSION" \
+              --bundle-version "$BUNDLE_VERSION" \
+              "${auth_args[@]}"
+          }
+
+          TEAM_AUTH=(
+            --apiKey "$APP_STORE_CONNECT_KEY_ID"
             --apiIssuer "$APP_STORE_CONNECT_ISSUER_ID"
+          )
+          INDIVIDUAL_AUTH=(
+            --apiKey "$APP_STORE_CONNECT_KEY_ID"
+            # altool requires a non-empty issuer argument even for Individual
+            # keys; the key ID is the documented placeholder in user mode.
+            --apiIssuer "$APP_STORE_CONNECT_KEY_ID"
+            --api-key-subject user
+          )
+
+          if [[ "${ASC_AUTH_MODE:-team}" == "individual" ]]; then
+            upload_package "${INDIVIDUAL_AUTH[@]}"
+          else
+            set +e
+            upload_package "${TEAM_AUTH[@]}" \
+              > "$RUNNER_TEMP/team-upload.log" 2>&1
+            upload_status=$?
+            set -e
+            cat "$RUNNER_TEMP/team-upload.log"
+
+            if [[ $upload_status -eq 0 ]]; then
+              exit 0
+            fi
+
+            if grep -Eq 'NOT_AUTHORIZED|Unable to authenticate|status code 401' \
+              "$RUNNER_TEMP/team-upload.log"
+            then
+              echo "::warning::Team-key upload was rejected with 401; retrying as an Individual API key."
+              upload_package "${INDIVIDUAL_AUTH[@]}"
+            else
+              exit "$upload_status"
+            fi
+          fi
 
       - name: Clean up signing keychain
         if: always()
