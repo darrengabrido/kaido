@@ -131,6 +131,32 @@ After the workflow is available on your branch, open **Actions → Deploy to Tes
 
 If the `Upload to TestFlight` step fails with `NOT_AUTHORIZED` / status 401, `altool` could not build a valid bearer token from the three `APP_STORE_CONNECT_*` secrets — this is a credential problem, not a workflow bug (`altool` only supports Team API keys; Individual API keys are not accepted for any authenticated call, so there is no alternate auth mode to fall back to). In App Store Connect → **Users and Access → Integrations → App Store Connect API**, confirm the key's status is **Active** and its role is **Admin** or **App Manager**, re-copy the Key ID and Issuer ID from that page, and regenerate the key if there's any doubt about the `.p8` (Apple only allows downloading it once). Update all three secrets together, and check **Settings → Environments → testflight** for a same-named secret shadowing the repo-level one — environment secrets take precedence.
 
+### Xcode Cloud
+
+Xcode Cloud is Apple's CI, integrated with App Store Connect — it can build every PR and archive straight to TestFlight without the manual certificate/profile handling the `Deploy to TestFlight` workflow above does. It's an alternative to (or can run alongside) the two GitHub Actions workflows.
+
+Unlike GitHub Actions, an Xcode Cloud workflow isn't a file in this repo — it's configured once from Xcode or App Store Connect, using the Apple Developer / App Store Connect account for team `com.oaktreehouse`:
+
+1. `scripts/setup.sh` (or `xcodegen generate`), then open `Kaido.xcodeproj` in Xcode.
+2. **Product → Xcode Cloud → Create Workflow**, granting Xcode access to this GitHub repository when prompted.
+3. Add these to the workflow's **Environment Variables** — `ci_scripts/ci_post_clone.sh` fails the build immediately if any is missing, so all six are required. Mark each **Secret**:
+
+   | Variable | Value |
+   | --- | --- |
+   | `APPLE_TEAM_ID` | 10-character Apple Team ID |
+   | `MAPBOX_ACCESS_TOKEN` | Public `pk.` token used by the app at runtime |
+   | `MAPBOX_DOWNLOADS_TOKEN` | Private Mapbox token with `DOWNLOADS:READ` |
+   | `SUPABASE_HOST` | Supabase host only (no `https://`) |
+   | `SUPABASE_ANON_KEY` | Supabase `anon`/`public` API key |
+   | `SPOTIFY_CLIENT_ID` | Spotify app Client ID |
+
+   `ci_scripts/ci_post_clone.sh` trims accidental whitespace from each, writes them into `Config/Secrets.xcconfig` (same as the GitHub Actions workflows), and then runs `xcodegen generate` — so Xcode Cloud always builds against the project matching the current `project.yml`. Like the TestFlight workflow, it intentionally leaves `OPENAI_API_KEY` blank. The script also works around a couple of Xcode Cloud-specific Swift Package resolution quirks (a persistent cache and a pair of Xcode defaults that block resolution without a committed `Package.resolved`); see its comments if a build fails while resolving packages.
+
+4. Enable **Automatically manage signing** on the workflow rather than setting `CODE_SIGN_STYLE`/certificates by hand — Xcode Cloud creates and manages the certificate/profile itself, using the same App ID requirements as TestFlight above (iCloud container `iCloud.com.oaktreehouse.kaido`, Push Notifications, Sign in with Apple).
+5. Pin the workflow's Xcode version to 26.5 to match the other CI paths.
+
+This repo intentionally doesn't commit `Kaido.xcodeproj` (see above) — `ci_post_clone.sh` regenerates it right after cloning, before Xcode Cloud resolves packages or builds, which is the standard approach for XcodeGen/Tuist projects on Xcode Cloud. If Xcode's or App Store Connect's workflow editor can't find a scheme to pick, the fallback is to commit the generated project instead of gitignoring it.
+
 ### Enabling sign-in
 
 1. **Supabase project** — create one, then copy the project host (e.g. `abcdefgh.supabase.co`, without the `https://`) and the `anon`/`public` key from Project Settings → API into `Config/Secrets.xcconfig`. Enable the Email provider under Authentication → Providers.
