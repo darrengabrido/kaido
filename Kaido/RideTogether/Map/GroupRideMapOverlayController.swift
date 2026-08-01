@@ -15,6 +15,9 @@ import SwiftUI
 /// than the SwiftUI `Map` builder.
 ///
 /// A rider's own marker is never drawn — Mapbox's own puck already represents the local user.
+/// Tapping a rider's row in the participant sheet (rather than their map marker) is what opens
+/// their card — see `GroupRideParticipantSheet` — which sidesteps needing this controller to
+/// register map-annotation tap handling at all.
 @MainActor
 final class GroupRideMapOverlayController {
     private weak var mapView: MapView?
@@ -22,9 +25,6 @@ final class GroupRideMapOverlayController {
     private var circleManager: CircleAnnotationManager?
     private var labelManager: PointAnnotationManager?
     private var refreshTask: Task<Void, Never>?
-
-    /// Set by the owner to present a rider card when a marker is tapped.
-    var onSelectMember: ((UUID) -> Void)?
 
     init(mapView: MapView, sessionStore: GroupRideSessionStore) {
         self.mapView = mapView
@@ -37,20 +37,6 @@ final class GroupRideMapOverlayController {
             layerPosition: .above(circles.id)
         )
         self.labelManager = labels
-
-        // These handlers are stored and later invoked by MapboxMaps, not necessarily from a
-        // context the compiler already knows is main-actor — hop explicitly before touching
-        // `self`, same as everywhere else this codebase bridges an SDK callback onto the actor.
-        circles.tapHandler = { [weak self] annotations in
-            let annotationId = annotations.first?.id
-            Task { @MainActor in self?.handleTap(annotationId) }
-            return true
-        }
-        labels.tapHandler = { [weak self] annotations in
-            let annotationId = annotations.first?.id
-            Task { @MainActor in self?.handleTap(annotationId) }
-            return true
-        }
 
         start()
     }
@@ -91,11 +77,6 @@ final class GroupRideMapOverlayController {
         mapView.camera.ease(to: cameraOptions, duration: 0.6)
     }
 
-    private func handleTap(_ annotationId: String?) {
-        guard let annotationId, let memberId = UUID(uuidString: annotationId) else { return }
-        onSelectMember?(memberId)
-    }
-
     private func refresh() {
         let myUserId = sessionStore.currentUserId
         let members = Dictionary(uniqueKeysWithValues: sessionStore.members.map { ($0.userId, $0) })
@@ -119,7 +100,6 @@ final class GroupRideMapOverlayController {
             circle.circleStrokeColor = StyleColor(member.isHost ? .white : UIColor(white: 1, alpha: 0.85))
             circle.circleStrokeWidth = member.isHost ? 3 : 1.5
             circle.circleOpacity = opacity
-            circle.circleEmissiveStrength = 1
             circles.append(circle)
 
             var label = PointAnnotation(id: idString, coordinate: location.coordinate)
@@ -127,7 +107,6 @@ final class GroupRideMapOverlayController {
             label.textSize = 11
             label.textColor = StyleColor(.white)
             label.textOpacity = opacity
-            label.textAllowOverlap = true
             labels.append(label)
         }
 

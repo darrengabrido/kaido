@@ -40,9 +40,6 @@ struct GroupRideNavigationOverlay: View {
                 body: banner.body
             )
         }
-        .onAppear {
-            overlayController.onSelectMember = { memberId in selectedMemberId = memberId }
-        }
         .sheet(isPresented: $isPresentingParticipants) {
             GroupRideParticipantSheet(
                 shareURL: shareURL,
@@ -50,6 +47,10 @@ struct GroupRideNavigationOverlay: View {
                 onOpenQuickMessages: {
                     isPresentingParticipants = false
                     isPresentingQuickMessages = true
+                },
+                onSelectMember: { memberId in
+                    isPresentingParticipants = false
+                    selectedMemberId = memberId
                 },
                 onShowGroup: {
                     guard let destination = sessionStore.ride?.routeSnapshot.destinationCoordinate else { return }

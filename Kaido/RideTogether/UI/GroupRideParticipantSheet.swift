@@ -12,6 +12,9 @@ struct GroupRideParticipantSheet: View {
     let shareURL: URL?
     let onPrepareShare: () -> Void
     let onOpenQuickMessages: () -> Void
+    /// Opens the tapped rider's compact card — triggered from the list row rather than their map
+    /// marker (see `GroupRideMapOverlayController`).
+    var onSelectMember: ((UUID) -> Void)?
     var onShowGroup: (() -> Void)?
 
     @State private var isConfirmingEnd = false
@@ -63,29 +66,38 @@ struct GroupRideParticipantSheet: View {
 
     private func participantRow(_ member: GroupRideMember) -> some View {
         HStack(spacing: 12) {
-            Circle()
-                .fill(GroupRideAvatarStyle.color(for: member.avatarSeed))
-                .frame(width: 32, height: 32)
-                .overlay {
-                    Text(GroupRideAvatarStyle.initials(for: member.displayName))
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.white)
-                }
+            Button {
+                onSelectMember?(member.userId)
+            } label: {
+                HStack(spacing: 12) {
+                    Circle()
+                        .fill(GroupRideAvatarStyle.color(for: member.avatarSeed))
+                        .frame(width: 32, height: 32)
+                        .overlay {
+                            Text(GroupRideAvatarStyle.initials(for: member.displayName))
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.white)
+                        }
 
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    Text(member.displayName)
-                        .font(.subheadline.weight(.medium))
-                    if member.isHost {
-                        Text("HOST")
-                            .font(.caption2.weight(.bold))
-                            .foregroundStyle(Color.kaidoVioletOnMap)
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 6) {
+                            Text(member.displayName)
+                                .font(.subheadline.weight(.medium))
+                            if member.isHost {
+                                Text("HOST")
+                                    .font(.caption2.weight(.bold))
+                                    .foregroundStyle(Color.kaidoVioletOnMap)
+                            }
+                        }
+                        Text(statusLabel(for: member))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                 }
-                Text(statusLabel(for: member))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            .disabled(member.userId == sessionStore.currentUserId)
 
             Spacer()
 
