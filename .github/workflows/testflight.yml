@@ -145,12 +145,52 @@ jobs:
       - name: Configure App Store Connect API key
         env:
           APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
           APP_STORE_CONNECT_API_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
         run: |
-          mkdir -p "$HOME/private_keys"
-          printf '%s' "$APP_STORE_CONNECT_API_KEY" \
-            > "$HOME/private_keys/AuthKey_$APP_STORE_CONNECT_KEY_ID.p8"
-          chmod 0600 "$HOME/private_keys/AuthKey_$APP_STORE_CONNECT_KEY_ID.p8"
+          # Trim accidental whitespace/newlines from IDs — they break JWT auth.
+          KEY_ID="$(printf '%s' "$APP_STORE_CONNECT_KEY_ID" | tr -d '[:space:]')"
+          ISSUER_ID="$(printf '%s' "$APP_STORE_CONNECT_ISSUER_ID" | tr -d '[:space:]')"
+          echo "APP_STORE_CONNECT_KEY_ID=$KEY_ID" >> "$GITHUB_ENV"
+          echo "APP_STORE_CONNECT_ISSUER_ID=$ISSUER_ID" >> "$GITHUB_ENV"
+
+          # Accept either raw PEM or PEM with literal \n sequences from secret UIs.
+          KEY_PEM="$(printf '%s' "$APP_STORE_CONNECT_API_KEY" | sed 's/\r$//' | sed 's/\\n/\n/g')"
+          if ! printf '%s\n' "$KEY_PEM" | grep -q 'BEGIN PRIVATE KEY'; then
+            echo "::error::APP_STORE_CONNECT_API_KEY must be the full .p8 PEM (including BEGIN/END PRIVATE KEY lines). Use a Team key from App Store Connect → Users and Access → Integrations → App Store Connect API — Individual keys are not supported by altool."
+            exit 1
+          fi
+
+          # altool searches these locations; set API_PRIVATE_KEYS_DIR explicitly too.
+          KEYS_DIR="$HOME/.appstoreconnect/private_keys"
+          mkdir -p "$KEYS_DIR" "$HOME/private_keys" "$HOME/.private_keys"
+          # Ensure the PEM ends with a newline (required for valid JWT signing).
+          printf '%s\n' "$KEY_PEM" > "$KEYS_DIR/AuthKey_${KEY_ID}.p8"
+          cp "$KEYS_DIR/AuthKey_${KEY_ID}.p8" "$HOME/private_keys/AuthKey_${KEY_ID}.p8"
+          cp "$KEYS_DIR/AuthKey_${KEY_ID}.p8" "$HOME/.private_keys/AuthKey_${KEY_ID}.p8"
+          chmod 0600 "$KEYS_DIR/AuthKey_${KEY_ID}.p8" \
+            "$HOME/private_keys/AuthKey_${KEY_ID}.p8" \
+            "$HOME/.private_keys/AuthKey_${KEY_ID}.p8"
+          echo "API_PRIVATE_KEYS_DIR=$KEYS_DIR" >> "$GITHUB_ENV"
+
+          echo "Installed AuthKey_${KEY_ID}.p8 ($(wc -c < "$KEYS_DIR/AuthKey_${KEY_ID}.p8" | tr -d ' ') bytes)"
+
+      - name: Verify App Store Connect API auth
+        run: |
+          # Fail fast with a clearer signal than upload's generic 401.
+          if ! xcrun altool --list-apps \
+            --apiKey "$APP_STORE_CONNECT_KEY_ID" \
+            --apiIssuer "$APP_STORE_CONNECT_ISSUER_ID" \
+            --output-format json > "$RUNNER_TEMP/asc-apps.json" 2>"$RUNNER_TEMP/asc-apps.err"
+          then
+            echo "::error::App Store Connect API auth failed. Confirm APP_STORE_CONNECT_KEY_ID, APP_STORE_CONNECT_ISSUER_ID, and APP_STORE_CONNECT_API_KEY are a matching Team API key (not Individual), Active, and Admin/App Manager."
+            cat "$RUNNER_TEMP/asc-apps.err" || true
+            exit 1
+          fi
+          if ! grep -q 'com.oaktreehouse.kaido' "$RUNNER_TEMP/asc-apps.json"; then
+            echo "::warning::Authenticated, but com.oaktreehouse.kaido was not returned by --list-apps. Confirm Kaido Ride exists under this team in App Store Connect."
+          fi
+          echo "App Store Connect API auth OK"
 
       - name: Generate Xcode project
         run: xcodegen generate
@@ -212,8 +252,9 @@ jobs:
 
       - name: Upload to TestFlight
         env:
-          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
-          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_KEY_ID: ${{ env.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ env.APP_STORE_CONNECT_ISSUER_ID }}
+          API_PRIVATE_KEYS_DIR: ${{ env.API_PRIVATE_KEYS_DIR }}
         run: |
           xcrun altool \
             --upload-app \
