@@ -29,14 +29,31 @@ enum GroupRideInviteLinkBuilder {
     /// Never pass a raw invite URL to `OSLog`/`print`/analytics — always route it through this
     /// first. Redacts the token query item only; every other component is preserved so the rest
     /// of the link is still useful in diagnostics.
+    ///
+    /// Builds the query string by hand rather than assigning `"«redacted»"` through
+    /// `URLComponents.queryItems` and reading back `.url` — `URLComponents` percent-encodes query
+    /// item values (the guillemets become `%C2%AB…%C2%BB`), which would make this string no
+    /// longer contain the literal `«redacted»` placeholder callers and tests look for.
     static func redacted(_ url: URL) -> String {
-        guard var components = URLComponents(url: url, resolvingAgainstBaseURL: true) else {
+        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: true),
+              let queryItems = components.queryItems, !queryItems.isEmpty else {
+            return url.absoluteString
+        }
+
+        var withoutQuery = components
+        withoutQuery.queryItems = nil
+        guard let prefix = withoutQuery.url?.absoluteString else {
             return "«redacted invite link»"
         }
-        components.queryItems = components.queryItems?.map { item in
-            guard item.name == "token" else { return item }
-            return URLQueryItem(name: item.name, value: "«redacted»")
-        }
-        return components.url?.absoluteString ?? "«redacted invite link»"
+
+        let redactedQuery = queryItems.map { item -> String in
+            guard item.name == "token" else {
+                let value = item.value?.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+                return "\(item.name)=\(value)"
+            }
+            return "\(item.name)=«redacted»"
+        }.joined(separator: "&")
+
+        return "\(prefix)?\(redactedQuery)"
     }
 }

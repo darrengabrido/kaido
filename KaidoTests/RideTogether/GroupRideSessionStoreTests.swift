@@ -89,6 +89,19 @@ final class GroupRideSessionStoreTests: XCTestCase {
         }
     }
 
+    /// `FakeGroupRideLocationSource.emit` synchronously invokes the handler `GroupRideLocationPublisher`
+    /// passed to `source.start`, but that handler is itself `Task { @MainActor in self?.handle(location) }`,
+    /// and `handle` schedules a second, inner `Task { await client.publishLocation(envelope) }` — two
+    /// async hops that need real turns of the executor before `publishedLocations` reflects the emit.
+    /// Poll rather than assume a fixed number of `Task.yield()` calls flushes both.
+    private func waitForPublishedLocationCount(_ count: Int, in realtime: FakeGroupRideRealtimeClient) async {
+        var attempts = 0
+        while realtime.publishedLocations.count < count, attempts < 50 {
+            await Task.yield()
+            attempts += 1
+        }
+    }
+
     private func assertThrowsNotHost(
         _ operation: () async throws -> Void,
         file: StaticString = #filePath,
@@ -152,6 +165,7 @@ final class GroupRideSessionStoreTests: XCTestCase {
         XCTAssertEqual(locationSource.startCallCount, 1)
 
         locationSource.emit(accurateLocation(latitude: 37.7749, longitude: -122.4194))
+        await waitForPublishedLocationCount(1, in: realtime)
         XCTAssertEqual(realtime.publishedLocations.count, 1)
 
         try await store.leaveRide()
@@ -170,6 +184,7 @@ final class GroupRideSessionStoreTests: XCTestCase {
         let locationSource = FakeGroupRideLocationSource()
         store.attachLiveNavigation(locationSource: locationSource)
         locationSource.emit(accurateLocation(latitude: 37.7749, longitude: -122.4194))
+        await waitForPublishedLocationCount(1, in: realtime)
         XCTAssertEqual(realtime.publishedLocations.count, 1)
 
         try await store.endRide()
@@ -188,6 +203,7 @@ final class GroupRideSessionStoreTests: XCTestCase {
         let locationSource = FakeGroupRideLocationSource()
         store.attachLiveNavigation(locationSource: locationSource)
         locationSource.emit(accurateLocation(latitude: 37.7749, longitude: -122.4194))
+        await waitForPublishedLocationCount(1, in: realtime)
         XCTAssertEqual(realtime.publishedLocations.count, 1)
 
         store.detachLiveNavigation()
