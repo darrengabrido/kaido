@@ -1,5 +1,6 @@
 import SwiftUI
 import AuthenticationServices
+import CryptoKit
 
 /// Landing / hero screen. Leads with brand identity and the two lowest-friction paths
 /// (Sign in with Apple, Continue as guest), and reveals email/password on a second step.
@@ -8,6 +9,7 @@ struct AuthGateView: View {
     @State private var viewModel = AuthViewModel()
     @State private var showEmailAuth = false
     @State private var appear = false
+    @State private var currentNonce: String?
 
     var body: some View {
         ZStack {
@@ -65,7 +67,10 @@ struct AuthGateView: View {
     private var actions: some View {
         VStack(spacing: 12) {
             SignInWithAppleButton(.continue) { request in
+                let nonce = Self.randomNonceString()
+                currentNonce = nonce
                 request.requestedScopes = [.email, .fullName]
+                request.nonce = Self.sha256(nonce)
             } onCompletion: { result in
                 handleAppleCompletion(result)
             }
@@ -108,19 +113,43 @@ struct AuthGateView: View {
     // MARK: Apple sign-in
 
     private func handleAppleCompletion(_ result: Result<ASAuthorization, any Error>) {
+        let nonce = currentNonce
+        currentNonce = nil
+
         switch result {
         case .success(let authorization):
-            guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential,
+            guard let nonce,
+                  let credential = authorization.credential as? ASAuthorizationAppleIDCredential,
                   let tokenData = credential.identityToken,
                   let idToken = String(data: tokenData, encoding: .utf8) else {
                 viewModel.errorMessage = "Apple didn't return a usable sign-in token."
                 return
             }
-            Task { await viewModel.signInWithApple(idToken: idToken) }
+            Task { await viewModel.signInWithApple(idToken: idToken, nonce: nonce) }
         case .failure(let error):
             guard (error as? ASAuthorizationError)?.code != .canceled else { return }
             viewModel.errorMessage = error.localizedDescription
         }
+    }
+
+    /// A high-entropy raw nonce, hashed with SHA256 before being sent to Apple in the
+    /// authorization request. Apple returns the hash unchanged inside the identity token;
+    /// passing the original raw value on to Supabase lets it verify the two match, which is
+    /// what stops a captured identity token from being replayed in a later sign-in.
+    private static func randomNonceString(length: Int = 32) -> String {
+        precondition(length > 0)
+        var randomBytes = [UInt8](repeating: 0, count: length)
+        let status = SecRandomCopyBytes(kSecRandomDefault, randomBytes.count, &randomBytes)
+        precondition(status == errSecSuccess, "Unable to generate nonce: SecRandomCopyBytes failed with \(status)")
+
+        let charset: [Character] = Array("0123456789ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvwxyz-._")
+        return String(randomBytes.map { charset[Int($0) % charset.count] })
+    }
+
+    private static func sha256(_ input: String) -> String {
+        SHA256.hash(data: Data(input.utf8))
+            .compactMap { String(format: "%02x", $0) }
+            .joined()
     }
 }
 

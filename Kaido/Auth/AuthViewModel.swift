@@ -71,7 +71,7 @@ final class AuthViewModel {
         }
     }
 
-    func signInWithApple(idToken: String) async {
+    func signInWithApple(idToken: String, nonce: String) async {
         guard let client = KaidoSupabaseClient.shared else {
             errorMessage = Self.notConfiguredMessage
             return
@@ -82,7 +82,7 @@ final class AuthViewModel {
 
         do {
             _ = try await client.auth.signInWithIdToken(
-                credentials: OpenIDConnectCredentials(provider: .apple, idToken: idToken)
+                credentials: OpenIDConnectCredentials(provider: .apple, idToken: idToken, nonce: nonce)
             )
         } catch {
             errorMessage = error.localizedDescription
