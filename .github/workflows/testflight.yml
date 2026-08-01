@@ -208,8 +208,15 @@ jobs:
 
           echo "ASC_AUTH_MODE=$AUTH_MODE" >> "$GITHUB_ENV"
           echo "list-apps succeeded using $AUTH_MODE auth"
-          # Safe to print: no secrets, helps confirm which apps this key can see.
-          python3 - <<'PY'
+          # Xcode 26.5 can exit successfully while writing no list-apps payload.
+          # That is inconclusive, not an auth failure; the explicit
+          # --upload-package command below is the authoritative check.
+          if [[ ! -s "$RUNNER_TEMP/asc-apps.json" ]]; then
+            echo "::warning::altool list-apps returned an empty payload; continuing to upload-package with Kaido's explicit Apple ID."
+            cat "$RUNNER_TEMP/asc-apps.err" || true
+          else
+            # Safe to print: no secrets, helps confirm which apps this key can see.
+            python3 - <<'PY'
           import json, os, pathlib, sys
           path = pathlib.Path(os.environ["RUNNER_TEMP"]) / "asc-apps.json"
           text = path.read_text(errors="replace")
@@ -230,6 +237,7 @@ jobs:
               sys.exit(1)
           print("Kaido is visible to this API key")
           PY
+          fi
 
       - name: Generate Xcode project
         run: xcodegen generate
