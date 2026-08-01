@@ -32,6 +32,7 @@ struct ContentView: View {
         .task {
             locationManager.requestWhenInUseAuthorization()
             BikeProfileStore.ensureActiveProfile(in: modelContext)
+            RiderProfileStore.ensureProfile(in: modelContext)
         }
     }
 }

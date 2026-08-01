@@ -1,20 +1,68 @@
 import SwiftUI
+import SwiftData
 
 struct ProfileView: View {
     @Environment(AuthState.self) private var authState
+    @Environment(\.modelContext) private var modelContext
+    @Query private var riderProfiles: [RiderProfile]
     private let mediaPlayerManager = MediaPlayerManager.shared
 
     var body: some View {
         NavigationStack {
             List {
+                riderProfileSection
                 accountSection
                 spotifySection
             }
             .navigationTitle("Profile")
+            .task {
+                RiderProfileStore.ensureProfile(in: modelContext)
+            }
         }
     }
 
     // MARK: - Sections
+
+    private var riderProfileSection: some View {
+        Section {
+            if let profile = riderProfiles.first {
+                NavigationLink {
+                    RiderProfileEditorView(profile: profile)
+                } label: {
+                    HStack(spacing: 14) {
+                        RiderAvatarView(displayName: profile.displayName)
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(profile.displayName.isEmpty ? "Add your profile" : profile.displayName)
+                                .font(.headline)
+
+                            if profile.displayName.isEmpty {
+                                Text("Tell Kaido a little about you")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                            } else {
+                                Label(
+                                    profile.homeCity.isEmpty
+                                        ? profile.experienceLevel.title
+                                        : "\(profile.homeCity) · \(profile.experienceLevel.title)",
+                                    systemImage: profile.experienceLevel.systemImage
+                                )
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+            } else {
+                ProgressView("Preparing your profile…")
+            }
+        } header: {
+            Text("Rider Profile")
+        } footer: {
+            Text("Your profile works whether you sign in or continue as a guest.")
+        }
+    }
 
     private var accountSection: some View {
         Section {
