@@ -163,10 +163,11 @@ final class AuthViewModel {
         }
     }
 
-    func signInWithApple(idToken: String, nonce: String) async {
+    @discardableResult
+    func signInWithApple(idToken: String, nonce: String) async -> Bool {
         guard let client = KaidoSupabaseClient.shared else {
             errorMessage = Self.notConfiguredMessage
-            return
+            return false
         }
         isLoading = true
         errorMessage = nil
@@ -176,8 +177,10 @@ final class AuthViewModel {
             _ = try await client.auth.signInWithIdToken(
                 credentials: OpenIDConnectCredentials(provider: .apple, idToken: idToken, nonce: nonce)
             )
+            return true
         } catch {
             errorMessage = error.localizedDescription
+            return false
         }
     }
 
