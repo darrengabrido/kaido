@@ -164,6 +164,7 @@ struct NavigationSessionView: UIViewControllerRepresentable {
             bannerModel = NavigationBannerModel(rideTimeProfile: rideTimeProfile)
         }
 
+        @MainActor
         func startCameraObservation() {
             guard let navigationMapView = navigationViewController?.navigationMapView else { return }
             cameraCancellable = navigationMapView.navigationCamera.cameraStates
@@ -176,6 +177,7 @@ struct NavigationSessionView: UIViewControllerRepresentable {
             handleCameraState(navigationMapView.navigationCamera.currentCameraState)
         }
 
+        @MainActor
         func recenterOnUser() {
             navigationViewController?.navigationMapView?.navigationCamera
                 .update(cameraState: .following)
@@ -186,6 +188,7 @@ struct NavigationSessionView: UIViewControllerRepresentable {
 
         /// Mapbox's padding accounts for the glass banners but not the Spotify bar docked
         /// above them. Without the extra inset the follow camera parks the puck under that bar.
+        @MainActor
         func refreshViewportPadding() {
             guard let navigationViewController,
                   let navigationMapView = navigationViewController.navigationMapView
@@ -216,8 +219,10 @@ struct NavigationSessionView: UIViewControllerRepresentable {
                 right: floatingWidth
             )
 
+            let currentViewportPadding = navigationMapView.viewportPadding
+
             // Avoid a layout feedback loop: only write when Mapbox (or us) drifted.
-            if lastAppliedPadding != padding || navigationMapView.viewportPadding != padding {
+            if lastAppliedPadding != padding || currentViewportPadding != padding {
                 lastAppliedPadding = padding
                 navigationMapView.viewportPadding = padding
             }
@@ -225,6 +230,7 @@ struct NavigationSessionView: UIViewControllerRepresentable {
             NavigationSessionView.hideStockResumeButtons(in: navigationViewController.view)
         }
 
+        @MainActor
         private func handleCameraState(_ state: NavigationCameraState) {
             let following = state == .following
             if let root = navigationViewController?.view {
