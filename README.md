@@ -102,6 +102,8 @@ The TestFlight workflow intentionally does not embed an OpenAI secret in the app
 
 After the workflow is available on your branch, open **Actions → Deploy to TestFlight → Run workflow**. A successful upload appears in App Store Connect after Apple's processing finishes.
 
+If the `Upload to TestFlight` step fails with `NOT_AUTHORIZED` / status 401, `altool` could not build a valid bearer token from the three `APP_STORE_CONNECT_*` secrets — this is a credential problem, not a workflow bug (`altool` only supports Team API keys; Individual API keys are not accepted for any authenticated call, so there is no alternate auth mode to fall back to). In App Store Connect → **Users and Access → Integrations → App Store Connect API**, confirm the key's status is **Active** and its role is **Admin** or **App Manager**, re-copy the Key ID and Issuer ID from that page, and regenerate the key if there's any doubt about the `.p8` (Apple only allows downloading it once). Update all three secrets together, and check **Settings → Environments → testflight** for a same-named secret shadowing the repo-level one — environment secrets take precedence.
+
 ### Enabling sign-in
 
 1. **Supabase project** — create one, then copy the project host (e.g. `abcdefgh.supabase.co`, without the `https://`) and the `anon`/`public` key from Project Settings → API into `Config/Secrets.xcconfig`. Enable the Email provider under Authentication → Providers.
