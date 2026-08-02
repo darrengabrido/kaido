@@ -68,12 +68,16 @@ final class GroupRideMapOverlayController {
         var coordinates = sessionStore.participantLocations.visibleLocations().map(\.coordinate)
         coordinates.append(destination)
         guard coordinates.count > 1 else { return }
-        let cameraOptions = mapView.mapboxMap.camera(
+        // `camera: CameraOptions()` (all fields nil) tells this API to fall back to the map's
+        // current bearing/pitch/padding — the equivalent of the old `bearing: nil, pitch: nil`
+        // on the now-deprecated `camera(for:padding:bearing:pitch:)` overload.
+        guard let cameraOptions = try? mapView.mapboxMap.camera(
             for: coordinates,
-            padding: UIEdgeInsets(top: 100, left: 60, bottom: 260, right: 60),
-            bearing: nil,
-            pitch: nil
-        )
+            camera: CameraOptions(),
+            coordinatesPadding: UIEdgeInsets(top: 100, left: 60, bottom: 260, right: 60),
+            maxZoom: nil,
+            offset: nil
+        ) else { return }
         mapView.camera.ease(to: cameraOptions, duration: 0.6)
     }
 
