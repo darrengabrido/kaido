@@ -35,6 +35,11 @@ targets:
       properties:
         UILaunchScreen: {}
         CFBundleDisplayName: Kaido
+        # Kaido only uses HTTPS/TLS via iOS's own networking stack (Mapbox,
+        # Supabase, Spotify) plus CryptoKit for the Sign in with Apple nonce —
+        # both exempt under EAR Category 5 Part 2. Declaring this up front
+        # skips the export-compliance prompt on every App Store Connect upload.
+        ITSAppUsesNonExemptEncryption: false
         MBXAccessToken: "$(MAPBOX_ACCESS_TOKEN)"
         SupabaseHost: "$(SUPABASE_HOST)"
         SupabaseAnonKey: "$(SUPABASE_ANON_KEY)"
