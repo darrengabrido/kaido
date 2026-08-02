@@ -54,3 +54,11 @@ chmod 0600 "$HOME/.netrc"
 # fresh on every clone, same as the GitHub Actions "Generate Xcode project"
 # step.
 xcodegen generate
+
+# Xcode Cloud's Archive action runs with automatic package resolution
+# disabled and expects a pre-existing Package.resolved — reasonable for a
+# committed .xcodeproj, but this one is regenerated fresh every run and
+# never had one to begin with. Resolve explicitly now, while automatic
+# resolution is still allowed, so the Archive action finds a resolved file
+# already in place instead of failing with "a resolved file is required".
+xcodebuild -resolvePackageDependencies -project Kaido.xcodeproj
