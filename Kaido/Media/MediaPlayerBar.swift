@@ -10,6 +10,10 @@ struct MediaPlayerBar: View {
     /// cue more than from watching the icon change.
     @State private var hapticTick = 0
 
+    /// Live horizontal offset while dragging, so the card visibly follows the swipe before
+    /// springing back. Purely cosmetic — `skipGesture` decides whether the drag committed.
+    @State private var dragOffset: CGFloat = 0
+
     var body: some View {
         Group {
             if manager.isConnected {
@@ -119,6 +123,31 @@ struct MediaPlayerBar: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Next track")
         }
+        .offset(x: dragOffset)
+        .gesture(skipGesture)
+    }
+
+    /// Swiping the card is a much bigger, more forgiving target than a 32pt transport icon —
+    /// worth having on a handlebar mount where you're aiming by feel, not by looking. Purely
+    /// additive: the three buttons above are untouched, so nothing changes for VoiceOver.
+    /// `minimumDistance` keeps this from competing with them — an ordinary tap never moves far
+    /// enough to engage it.
+    private var skipGesture: some Gesture {
+        DragGesture(minimumDistance: 24)
+            .onChanged { value in
+                dragOffset = max(-120, min(120, value.translation.width))
+            }
+            .onEnded { value in
+                let translation = value.translation.width
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                    dragOffset = 0
+                }
+                if translation <= -60 {
+                    perform { manager.skipToNext() }
+                } else if translation >= 60 {
+                    perform { manager.skipToPrevious() }
+                }
+            }
     }
 
     /// Routes every transport action through the shared haptic tick so each control gets the
