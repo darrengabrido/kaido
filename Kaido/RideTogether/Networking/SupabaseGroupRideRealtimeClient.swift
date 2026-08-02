@@ -22,8 +22,8 @@ actor SupabaseGroupRideRealtimeClient: GroupRideRealtimeClient {
         rideId: UUID,
         memberId: UUID,
         onLocation: @escaping @Sendable (GroupRideLocationEnvelope) -> Void,
-        onMessage: @escaping @Sendable (GroupRideMessage) -> Void,
-        onRideStatusChange: @escaping @Sendable (GroupRideStatus) -> Void,
+        onMessage: @escaping @Sendable () -> Void,
+        onRideStatusChange: @escaping @Sendable () -> Void,
         onPresenceChange: @escaping @Sendable (Set<UUID>) -> Void,
         onConnectionStateChange: @escaping @Sendable (GroupRideConnectionState) -> Void
     ) async {
@@ -51,17 +51,17 @@ actor SupabaseGroupRideRealtimeClient: GroupRideRealtimeClient {
                 }
             },
             Task {
-                for await payload in newChannel.broadcastStream(event: "message") {
-                    if let message = Self.decode(GroupRideMessage.self, from: payload) {
-                        onMessage(message)
-                    }
+                // Payload intentionally ignored — see the doc comment on `connect` in
+                // `GroupRideRealtimeClient`. Any active member can broadcast this event with any
+                // content, so it's only ever a signal to go re-fetch the durable message table.
+                for await _ in newChannel.broadcastStream(event: "message") {
+                    onMessage()
                 }
             },
             Task {
-                for await payload in newChannel.broadcastStream(event: "ride_status") {
-                    if let notice = Self.decode(RideStatusNotice.self, from: payload) {
-                        onRideStatusChange(notice.status)
-                    }
+                // Same reasoning as above — never trust a broadcast "ride_status" value directly.
+                for await _ in newChannel.broadcastStream(event: "ride_status") {
+                    onRideStatusChange()
                 }
             },
             Task {

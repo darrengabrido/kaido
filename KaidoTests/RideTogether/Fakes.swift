@@ -136,17 +136,24 @@ final class FakeGroupRideRealtimeClient: GroupRideRealtimeClient, @unchecked Sen
     private(set) var publishedLocations: [GroupRideLocationEnvelope] = []
     private(set) var publishedMessages: [GroupRideMessage] = []
     private(set) var publishedStatuses: [GroupRideStatus] = []
+    /// Captured so tests can simulate a server-pushed "something changed" broadcast arriving on
+    /// an already-connected session — see the tests proving neither notice is trusted at face
+    /// value (`GroupRideSessionStore.handleIncomingMessageNotice`/`handleRemoteStatusChangeNotice`).
+    private(set) var capturedOnMessage: (@Sendable () -> Void)?
+    private(set) var capturedOnRideStatusChange: (@Sendable () -> Void)?
 
     func connect(
         rideId: UUID,
         memberId: UUID,
         onLocation: @escaping @Sendable (GroupRideLocationEnvelope) -> Void,
-        onMessage: @escaping @Sendable (GroupRideMessage) -> Void,
-        onRideStatusChange: @escaping @Sendable (GroupRideStatus) -> Void,
+        onMessage: @escaping @Sendable () -> Void,
+        onRideStatusChange: @escaping @Sendable () -> Void,
         onPresenceChange: @escaping @Sendable (Set<UUID>) -> Void,
         onConnectionStateChange: @escaping @Sendable (GroupRideConnectionState) -> Void
     ) async {
         connectCallCount += 1
+        capturedOnMessage = onMessage
+        capturedOnRideStatusChange = onRideStatusChange
         onConnectionStateChange(.connected)
     }
 

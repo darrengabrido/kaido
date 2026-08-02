@@ -83,8 +83,17 @@ kaido://ride-together/join?ride=<ride-id>&token=<invite-token>
 - **Ride-status changes fan out over the same private Realtime channel** used for locations
   (`ride_status` broadcast event), rather than adding Postgres Changes/CDC as a second Realtime
   primitive. The acting client (almost always the host) broadcasts immediately after a
-  start/end/cancel RPC succeeds; a foreground/reconnect refetch is the fallback if that notice is
-  ever missed.
+  start/end/cancel RPC succeeds.
+- **Broadcast content is never trusted, only used as a "go re-fetch" signal** — a security review
+  found that Realtime Broadcast has no per-message identity binding: any active member of a ride
+  (not just the host) can broadcast a `message`/`ride_status` event with any payload they like,
+  since the RLS policy gating broadcasts (`group_ride_channel_send`) checks channel membership,
+  not content or role. `GroupRideSessionStore.handleIncomingMessageNotice`/
+  `handleRemoteStatusChangeNotice` therefore carry no payload at all — receiving either event only
+  triggers a re-fetch from the durable, RLS-protected service (`fetchRecentMessages`/`fetchRide`),
+  and only that re-fetched result is ever displayed or acted on. This closes both a chat-message
+  impersonation path (a forged broadcast attributing a fabricated message to another rider, e.g.
+  the host) and a griefing path (a non-host forcing every client to act as if the ride had ended).
 - **Sharing an invite during active navigation always rotates it first** — the raw token is
   returned only once, by `create_group_ride`/`rotate_group_ride_invite`, and is deliberately never
   persisted client-side, so there's nothing to re-share without generating a fresh one.
@@ -135,6 +144,16 @@ Requires two simulators/devices, both signed into (or guesting on) the same Supa
   Realtime connection; a backgrounded device's marker will honestly go stale rather than pretend
   to stay live. No new APNs infrastructure was added (none existed before this feature).
 - No leader transfer: the host leaving ends the ride outright, by design for this MVP.
+- **Live location broadcasts are self-declared, not server-attested.** A location envelope's
+  `memberId` is set by the sending client, and the RLS policy gating the channel only checks ride
+  membership, not which specific member is broadcasting. A malicious active member could in theory
+  broadcast under a different real member's id. Given the app's threat model (an authenticated,
+  already-trusted ride member, not an outside attacker) and that the impact is display-only and
+  bounded to the current app session (no persistence, resets on relaunch or ride end), this was
+  accepted as a known MVP limitation rather than fixed — unlike chat-message and ride-status
+  broadcasts (see the design-decision note above), which were hardened because their impact
+  (voice-attributed safety instructions; forcing every client to act as if the ride ended) was
+  judged high enough to justify the extra round trip. Revisit if this threat model changes.
 - Rider markers show a static bearing indicator only in the tapped rider card, not a rotating
   glyph on the map itself (see above).
 - The realtime channel authorization policies (`realtime.messages`) and the exact

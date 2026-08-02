@@ -102,6 +102,26 @@ final class GroupRideSessionStoreTests: XCTestCase {
         }
     }
 
+    /// Generic version of the polling helpers above, for asserting on state reached only after an
+    /// `async` handler chained off a fake's captured callback has actually run.
+    private func waitUntil(_ condition: () -> Bool) async {
+        var attempts = 0
+        while !condition(), attempts < 50 {
+            await Task.yield()
+            attempts += 1
+        }
+    }
+
+    /// For asserting a negative outcome (nothing changed) after triggering async work with no
+    /// positive condition to poll for — yields the same generous number of turns the positive
+    /// polling helpers above allow, so an async chain that legitimately has nothing left to settle
+    /// gets every chance to prove otherwise before the assertion runs.
+    private func waitForQuiescence() async {
+        for _ in 0..<50 {
+            await Task.yield()
+        }
+    }
+
     private func assertThrowsNotHost(
         _ operation: () async throws -> Void,
         file: StaticString = #filePath,
@@ -257,5 +277,70 @@ final class GroupRideSessionStoreTests: XCTestCase {
 
         let sent = try XCTUnwrap(service.sentMessages.first)
         XCTAssertEqual(sent.senderUserId, identity.identity.userId)
+    }
+
+    // MARK: - Realtime broadcasts are untrusted signals, not authoritative content
+    //
+    // Realtime Broadcast has no per-message identity binding — any active ride member can send a
+    // "message"/"ride_status" event with whatever content they like. These tests confirm the
+    // session store never displays/acts on a broadcast's own field values, only on content
+    // re-fetched from the durable, RLS-protected service afterward.
+
+    func testIncomingMessageNoticeDisplaysOnlyContentFromTheDurableStore() async throws {
+        let (store, service, realtime, identity) = makeStore()
+        let ride = try await createRideAsHost(store: store, service: service, identity: identity)
+        await waitUntilConnected(store)
+        // Connecting also fires its own incidental `refreshFromServer()` — let it fully settle
+        // before seeding this test's own fixtures, so it can't race the assertions below.
+        await waitForQuiescence()
+
+        let genuineMessage = GroupRideMessage(
+            id: UUID(),
+            rideId: ride.id,
+            senderUserId: UUID(),
+            senderDisplayName: "Rider",
+            kind: .preset,
+            body: "All good",
+            presetKey: "all_good",
+            clientMessageId: UUID(),
+            createdAt: Date()
+        )
+        service.messagesStore = [genuineMessage]
+
+        // No payload is available to the fake here at all — the callback takes no arguments,
+        // which is the point: a receiver has nothing to trust except by going and fetching it.
+        realtime.capturedOnMessage?()
+        await waitUntil { store.messageCenter.recentMessages.contains { $0.id == genuineMessage.id } }
+
+        XCTAssertEqual(store.messageCenter.recentMessages.last?.id, genuineMessage.id)
+        XCTAssertEqual(store.messageCenter.currentBanner?.id, genuineMessage.id)
+    }
+
+    func testForgedRideStatusNoticeCannotEndTheRideWithoutServerConfirmation() async throws {
+        let (store, service, realtime, identity) = makeStore()
+        try await createRideAsHost(store: store, service: service, identity: identity)
+        await waitUntilConnected(store)
+        await waitForQuiescence()
+        service.rideStore?.status = .active // the server's real status is unchanged
+
+        // Simulates a non-host member broadcasting a forged "ended" notice.
+        realtime.capturedOnRideStatusChange?()
+        await waitForQuiescence()
+
+        XCTAssertEqual(store.ride?.status, .active, "a broadcast alone must never end the ride")
+        XCTAssertNotEqual(store.connectionState, .disconnected, "live state shouldn't tear down on an unconfirmed notice")
+    }
+
+    func testRideStatusNoticeEndsTheRideOnceServerConfirmsTermination() async throws {
+        let (store, service, realtime, identity) = makeStore()
+        try await createRideAsHost(store: store, service: service, identity: identity)
+        await waitUntilConnected(store)
+        service.rideStore?.status = .ended // the real end_group_ride RPC already succeeded elsewhere
+
+        realtime.capturedOnRideStatusChange?()
+        await waitUntil { store.ride?.status == .ended }
+
+        XCTAssertEqual(store.connectionState, .disconnected)
+        XCTAssertEqual(realtime.disconnectCallCount, 1)
     }
 }

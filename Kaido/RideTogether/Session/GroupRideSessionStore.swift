@@ -137,11 +137,11 @@ final class GroupRideSessionStore: @unchecked Sendable {
             onLocation: { [weak self] envelope in
                 Task { @MainActor in self?.participantLocations.apply(envelope) }
             },
-            onMessage: { [weak self] message in
-                Task { @MainActor in self?.handleIncoming(message: message) }
+            onMessage: { [weak self] in
+                Task { @MainActor in await self?.handleIncomingMessageNotice() }
             },
-            onRideStatusChange: { [weak self] status in
-                Task { @MainActor in await self?.handleRemoteStatusChange(status) }
+            onRideStatusChange: { [weak self] in
+                Task { @MainActor in await self?.handleRemoteStatusChangeNotice() }
             },
             onPresenceChange: { [weak self] online in
                 Task { @MainActor in self?.onlineMemberIds = online }
@@ -152,8 +152,20 @@ final class GroupRideSessionStore: @unchecked Sendable {
         )
     }
 
-    private func handleIncoming(message: GroupRideMessage) {
-        messageCenter.ingest(message, isIncoming: message.senderUserId != myUserId)
+    /// A "message" broadcast carries no server-verified identity — any active member of the ride
+    /// can send one with any `senderUserId`/`body` they like (the RLS policy gating broadcasts
+    /// only checks ride membership, not payload content). Treat it purely as a "something new
+    /// arrived, go check" signal and only ever display content re-fetched from the durable,
+    /// RLS-protected `group_ride_messages` table — never a value carried in the broadcast itself.
+    private func handleIncomingMessageNotice() async {
+        guard let ride else { return }
+        guard let history = try? await service.fetchRecentMessages(
+            rideId: ride.id,
+            limit: GroupRideConfig.Messaging.recentMessageHistoryLimit
+        ) else { return }
+        for verified in history {
+            messageCenter.ingest(verified, isIncoming: verified.senderUserId != myUserId)
+        }
     }
 
     private func handleConnectionStateChange(_ state: GroupRideConnectionState) {
@@ -166,13 +178,13 @@ final class GroupRideSessionStore: @unchecked Sendable {
         }
     }
 
-    private func handleRemoteStatusChange(_ status: GroupRideStatus) async {
-        guard var updatedRide = ride else { return }
-        updatedRide.status = status
-        ride = updatedRide
-        if status.isTerminal {
-            await teardownLiveState(clearRide: false)
-        }
+    /// Same reasoning as `handleIncomingMessageNotice` — a "ride_status" broadcast isn't
+    /// authenticated as actually coming from the host (any active member can send one), so a
+    /// forged notice must never directly flip local status or tear down the live connection.
+    /// `refreshFromServer` re-derives the real status from the server (which does correctly
+    /// enforce host-only end/cancel) and only acts on that.
+    private func handleRemoteStatusChangeNotice() async {
+        await refreshFromServer()
     }
 
     // MARK: - Lifecycle actions
