@@ -228,7 +228,30 @@ jobs:
           fi
 
       - name: Generate Xcode project
-        run: xcodegen generate
+        run: |
+          xcodegen generate
+
+          # App Store Connect requires every upload's CFBundleVersion to be strictly higher than
+          # any build previously uploaded for this app — from ANY source. A diagnostic run proved
+          # xcodebuild resolves CURRENT_PROJECT_VERSION as a build setting correctly, but XcodeGen's
+          # `info.properties` merge (see project.yml's `targets.Kaido.info` block) still writes its
+          # own literal "1"/"1.0" directly into Kaido/Info.plist, overriding the
+          # $(CURRENT_PROJECT_VERSION)/$(MARKETING_VERSION) placeholders in the committed file — so
+          # no build-setting override, however it's supplied, ever reaches the archived app. Stamp
+          # the generated file directly, after xcodegen has already had its say, so nothing
+          # overwrites it afterward.
+          BUILD_NUMBER="$(date -u +%Y%m%d%H%M)"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" Kaido/Info.plist
+          echo "Stamped Kaido/Info.plist CFBundleVersion=$BUILD_NUMBER"
+
+      - name: Verify build number was stamped
+        run: |
+          RESOLVED="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' Kaido/Info.plist)"
+          echo "Kaido/Info.plist CFBundleVersion: $RESOLVED"
+          if [[ "$RESOLVED" == "1" ]]; then
+            echo "::error::Kaido/Info.plist still has CFBundleVersion '1' after stamping — the PlistBuddy write in the previous step didn't take effect."
+            exit 1
+          fi
 
       - name: Archive
         env:
@@ -242,7 +265,6 @@ jobs:
             -archivePath "$RUNNER_TEMP/Kaido.xcarchive" \
             DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
             OTHER_CODE_SIGN_FLAGS="--keychain $SIGNING_KEYCHAIN_PATH" \
-            CURRENT_PROJECT_VERSION="${{ github.run_number }}" \
             clean archive
 
       - name: Export IPA
