@@ -1,5 +1,6 @@
 import SwiftUI
 import Combine
+import MapboxMaps
 import MapboxNavigationCore
 import MapboxNavigationUIKit
 import UIKit
@@ -57,6 +58,12 @@ struct NavigationSessionView: UIViewControllerRepresentable {
         coordinator: Coordinator
     ) {
         Self.hideStockResumeButtons(in: viewController.view)
+
+        // Same bike puck as the browsing/route-preview maps (BikePuckImage) — this is the view
+        // that's actually on screen while GPS is driving turn-by-turn guidance.
+        if let navigationMapView = viewController.navigationMapView {
+            navigationMapView.puckType = .puck2D(Puck2DConfiguration(bearingImage: BikePuckImage.bearing))
+        }
 
         let barController = UIHostingController(
             rootView: MediaPlayerBar(manager: MediaPlayerManager.shared)
