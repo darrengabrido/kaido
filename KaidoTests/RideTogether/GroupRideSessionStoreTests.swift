@@ -341,10 +341,14 @@ final class GroupRideSessionStoreTests: XCTestCase {
         service.rideStore?.status = .ended // the real end_group_ride RPC already succeeded elsewhere
 
         realtime.capturedOnRideStatusChange?()
-        // Poll for the actual end-state effect (teardown), not `ride.status` alone — that field
-        // flips to `.ended` several awaits before `teardownLiveState` runs, so waiting on it would
-        // let this check race ahead of the disconnect it's meant to confirm.
-        await waitUntil { realtime.disconnectCallCount >= 1 }
+        // Poll for the exact condition being asserted, not an earlier proxy for it: `ride.status`
+        // flips to `.ended` several awaits before `teardownLiveState` runs, and even
+        // `disconnectCallCount` incrementing doesn't guarantee `connectionState` has been set yet
+        // — `teardownLiveState` awaits `realtimeClient.disconnect()` (a real actor hop back from
+        // the non-isolated fake to this @MainActor store) before its own very next line assigns
+        // `connectionState = .disconnected`, so the counter can observably tick up on an earlier
+        // turn than the assignment. Only waiting on the final state itself is race-free.
+        await waitUntil { store.connectionState == .disconnected }
 
         XCTAssertEqual(store.ride?.status, .ended)
         XCTAssertEqual(store.connectionState, .disconnected)
