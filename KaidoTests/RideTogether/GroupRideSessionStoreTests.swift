@@ -79,36 +79,33 @@ final class GroupRideSessionStoreTests: XCTestCase {
     /// `onConnectionStateChange` always re-hops via `Task { @MainActor in }` (correct — the real
     /// Realtime client is an actor, not necessarily already on the main actor), so even though
     /// the fake invokes it synchronously, the resulting `connectionState` update lands on a
-    /// later main-actor turn. Polling with `Task.yield()` avoids a flaky assumption about
-    /// exactly how many turns that takes.
+    /// later main-actor turn. Poll for it rather than assume a fixed number of turns — see
+    /// `waitUntil` below for why the bound is wall-clock, not an iteration count.
     private func waitUntilConnected(_ store: GroupRideSessionStore) async {
-        var attempts = 0
-        while store.connectionState != .connected, attempts < 50 {
-            await Task.yield()
-            attempts += 1
-        }
+        await waitUntil { store.connectionState == .connected }
     }
 
     /// `FakeGroupRideLocationSource.emit` synchronously invokes the handler `GroupRideLocationPublisher`
     /// passed to `source.start`, but that handler is itself `Task { @MainActor in self?.handle(location) }`,
     /// and `handle` schedules a second, inner `Task { await client.publishLocation(envelope) }` — two
     /// async hops that need real turns of the executor before `publishedLocations` reflects the emit.
-    /// Poll rather than assume a fixed number of `Task.yield()` calls flushes both.
+    /// Poll rather than assume a fixed number of turns flushes both.
     private func waitForPublishedLocationCount(_ count: Int, in realtime: FakeGroupRideRealtimeClient) async {
-        var attempts = 0
-        while realtime.publishedLocations.count < count, attempts < 50 {
-            await Task.yield()
-            attempts += 1
-        }
+        await waitUntil { realtime.publishedLocations.count >= count }
     }
 
     /// Generic version of the polling helpers above, for asserting on state reached only after an
-    /// `async` handler chained off a fake's captured callback has actually run.
-    private func waitUntil(_ condition: () -> Bool) async {
-        var attempts = 0
-        while !condition(), attempts < 50 {
+    /// `async` handler chained off a fake's captured callback has actually run. Polls by yielding
+    /// so the common case (condition true within a turn or two) resolves almost instantly, but
+    /// bounds the wait by wall-clock time instead of a fixed `Task.yield()` count — a fixed count
+    /// is really a guess at "enough scheduler turns happened," and how many turns that takes
+    /// varies with CI load, so a fixed cap can give up while the condition is still legitimately
+    /// on its way to becoming true (this is what made `testRideStatusNoticeEndsTheRideOnceServerConfirmsTermination`
+    /// flaky under load even after it was rewritten to poll the final state instead of a proxy).
+    private func waitUntil(timeout: Duration = .seconds(2), _ condition: () -> Bool) async {
+        let deadline = ContinuousClock.now + timeout
+        while !condition(), ContinuousClock.now < deadline {
             await Task.yield()
-            attempts += 1
         }
     }
 
