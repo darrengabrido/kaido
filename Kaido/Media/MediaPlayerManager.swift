@@ -29,7 +29,7 @@ final class MediaPlayerManager: NSObject {
     @ObservationIgnored
     private lazy var appRemote: SPTAppRemote = {
         let configuration = SPTConfiguration(clientID: Self.clientID, redirectURL: Self.redirectURL)
-        let remote = SPTAppRemote(configuration: configuration, logLevel: .none)
+        let remote = SPTAppRemote(configuration: configuration, logLevel: .debug)
         remote.delegate = self
         return remote
     }()
@@ -44,11 +44,14 @@ final class MediaPlayerManager: NSObject {
         connectionError = nil
 
         guard appRemote.connectionParameters.accessToken == nil else {
+            DebugLog.shared.log("connect() reusing existing access token.", category: "Spotify")
             appRemote.connect()
             return
         }
 
+        DebugLog.shared.log("connect() starting authorizeAndPlayURI.", category: "Spotify")
         appRemote.authorizeAndPlayURI("") { [weak self] success in
+            DebugLog.shared.log("authorizeAndPlayURI callback: success=\(success)", category: "Spotify")
             guard !success else { return }
             DispatchQueue.main.async {
                 self?.connectionError = "Install Spotify to control playback here."
@@ -69,12 +72,21 @@ final class MediaPlayerManager: NSObject {
 
     func handleAuthCallback(_ url: URL) {
         let parameters = appRemote.authorizationParameters(from: url)
+        // Keys only — a param value can be the access token, which must never end up in a log.
+        DebugLog.shared.log(
+            "Callback received, parameter keys: \(parameters?.keys.sorted() ?? [])",
+            category: "Spotify"
+        )
 
         if let token = parameters?[SPTAppRemoteAccessTokenKey] {
+            DebugLog.shared.log("Auth succeeded, access token received (\(token.count) chars).", category: "Spotify")
             appRemote.connectionParameters.accessToken = token
             appRemote.connect()
         } else if let message = parameters?[SPTAppRemoteErrorDescriptionKey] {
+            DebugLog.shared.log("Auth failed: \(message)", category: "Spotify")
             connectionError = message
+        } else {
+            DebugLog.shared.log("Callback had neither an access token nor an error description.", category: "Spotify")
         }
     }
 
@@ -111,6 +123,7 @@ final class MediaPlayerManager: NSObject {
 
 extension MediaPlayerManager: SPTAppRemoteDelegate {
     func appRemoteDidEstablishConnection(_ appRemote: SPTAppRemote) {
+        DebugLog.shared.log("App Remote connection established.", category: "Spotify")
         isConnected = true
         connectionError = nil
 
@@ -123,11 +136,13 @@ extension MediaPlayerManager: SPTAppRemoteDelegate {
     }
 
     func appRemote(_ appRemote: SPTAppRemote, didFailConnectionAttemptWithError error: Error?) {
+        DebugLog.shared.log("App Remote connection failed: \(error?.localizedDescription ?? "nil")", category: "Spotify")
         isConnected = false
         connectionError = error?.localizedDescription
     }
 
     func appRemote(_ appRemote: SPTAppRemote, didDisconnectWithError error: Error?) {
+        DebugLog.shared.log("App Remote disconnected: \(error?.localizedDescription ?? "nil")", category: "Spotify")
         isConnected = false
         connectionError = error?.localizedDescription
     }

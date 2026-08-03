@@ -135,6 +135,7 @@ final class AuthViewModel {
                 }
             }
         } catch {
+            DebugLog.shared.log("\(mode == .signIn ? "Sign in" : "Sign up") failed: \(error.localizedDescription)", category: "Auth")
             errorMessage = error.localizedDescription
         }
     }
@@ -159,6 +160,7 @@ final class AuthViewModel {
             try await client.auth.resetPasswordForEmail(email)
             resetLinkSent = true
         } catch {
+            DebugLog.shared.log("Password reset failed: \(error.localizedDescription)", category: "Auth")
             errorMessage = error.localizedDescription
         }
     }
@@ -179,6 +181,7 @@ final class AuthViewModel {
             )
             return true
         } catch {
+            DebugLog.shared.log("Sign in with Apple failed: \(error.localizedDescription)", category: "Auth")
             errorMessage = error.localizedDescription
             return false
         }

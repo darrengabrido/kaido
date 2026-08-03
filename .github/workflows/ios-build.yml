@@ -1,10 +1,11 @@
 name: iOS Build
 
 on:
-  # Paused: GitHub Actions' free macOS runner minutes for this repo are
-  # exhausted (Deploy to TestFlight has moved to Xcode Cloud, which isn't
-  # subject to the same limit). Restore the pull_request/push triggers
-  # below once minutes reset or a spending limit is raised.
+  # Public repos get unlimited free GitHub-hosted runner minutes (including
+  # macOS), so this is no longer competing with Deploy to TestFlight/Xcode
+  # Cloud for a shared paid quota.
+  pull_request:
+  push:
   workflow_dispatch:
 
 permissions:
