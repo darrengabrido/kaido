@@ -1,6 +1,7 @@
-import SwiftUI
 import AuthenticationServices
 import CryptoKit
+import Foundation
+import SwiftUI
 
 /// Landing / hero screen. Leads with brand identity and the two lowest-friction paths
 /// (Sign in with Apple, Continue as guest), and reveals email/password on a second step.
@@ -125,7 +126,18 @@ struct AuthGateView: View {
                 viewModel.errorMessage = "Apple didn't return a usable sign-in token."
                 return
             }
-            Task { await viewModel.signInWithApple(idToken: idToken, nonce: nonce) }
+            let displayName = credential.fullName.map {
+                PersonNameComponentsFormatter().string(from: $0)
+            }
+            if let displayName {
+                RiderProfileStore.rememberSuggestedDisplayName(displayName)
+            }
+            Task {
+                let signedIn = await viewModel.signInWithApple(idToken: idToken, nonce: nonce)
+                if !signedIn {
+                    RiderProfileStore.discardSuggestedDisplayName()
+                }
+            }
         case .failure(let error):
             guard (error as? ASAuthorizationError)?.code != .canceled else { return }
             viewModel.errorMessage = error.localizedDescription

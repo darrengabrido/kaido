@@ -159,57 +159,45 @@ jobs:
           # Accept either raw PEM or PEM with literal \n sequences from secret UIs.
           KEY_PEM="$(printf '%s' "$APP_STORE_CONNECT_API_KEY" | sed 's/\r$//' | sed 's/\\n/\n/g')"
           if ! printf '%s\n' "$KEY_PEM" | grep -q 'BEGIN PRIVATE KEY'; then
-            echo "::error::APP_STORE_CONNECT_API_KEY must be the full .p8 PEM (including BEGIN/END PRIVATE KEY lines). Use a Team key from App Store Connect → Users and Access → Integrations → App Store Connect API — Individual keys are not supported by altool."
+            echo "::error::APP_STORE_CONNECT_API_KEY must be the full .p8 PEM (including BEGIN/END PRIVATE KEY lines) for a Team key from App Store Connect → Users and Access → Integrations → App Store Connect API."
             exit 1
           fi
 
-          # altool searches these locations; set API_PRIVATE_KEYS_DIR explicitly too.
-          # Install both Team (AuthKey_) and Individual (ApiKey_) filenames.
+          # altool only accepts Team API keys — Apple has confirmed Individual
+          # keys are not supported for any authenticated altool call, so there
+          # is no fallback auth mode to install for. altool's search path for
+          # the .p8 is also inconsistent across subcommands, so install it
+          # everywhere it might look; set API_PRIVATE_KEYS_DIR explicitly too.
           KEYS_DIR="$HOME/.appstoreconnect/private_keys"
           mkdir -p "$KEYS_DIR" "$HOME/private_keys" "$HOME/.private_keys"
           # Ensure the PEM ends with a newline (required for valid JWT signing).
           printf '%s\n' "$KEY_PEM" > "$KEYS_DIR/AuthKey_${KEY_ID}.p8"
-          cp "$KEYS_DIR/AuthKey_${KEY_ID}.p8" "$KEYS_DIR/ApiKey_${KEY_ID}.p8"
           for dest in "$HOME/private_keys" "$HOME/.private_keys"; do
             cp "$KEYS_DIR/AuthKey_${KEY_ID}.p8" "$dest/AuthKey_${KEY_ID}.p8"
-            cp "$KEYS_DIR/ApiKey_${KEY_ID}.p8" "$dest/ApiKey_${KEY_ID}.p8"
-            chmod 0600 "$dest/AuthKey_${KEY_ID}.p8" "$dest/ApiKey_${KEY_ID}.p8"
+            chmod 0600 "$dest/AuthKey_${KEY_ID}.p8"
           done
-          chmod 0600 "$KEYS_DIR/AuthKey_${KEY_ID}.p8" "$KEYS_DIR/ApiKey_${KEY_ID}.p8"
+          chmod 0600 "$KEYS_DIR/AuthKey_${KEY_ID}.p8"
           echo "API_PRIVATE_KEYS_DIR=$KEYS_DIR" >> "$GITHUB_ENV"
 
-          echo "Installed AuthKey/ApiKey_${KEY_ID}.p8 ($(wc -c < "$KEYS_DIR/AuthKey_${KEY_ID}.p8" | tr -d ' ') bytes)"
+          echo "Installed AuthKey_${KEY_ID}.p8 ($(wc -c < "$KEYS_DIR/AuthKey_${KEY_ID}.p8" | tr -d ' ') bytes)"
 
       - name: Verify App Store Connect API auth
         run: |
-          list_apps() {
-            local extra_args=("$@")
-            xcrun altool --list-apps \
-              --apiKey "$APP_STORE_CONNECT_KEY_ID" \
-              --apiIssuer "$APP_STORE_CONNECT_ISSUER_ID" \
-              "${extra_args[@]}" \
-              --output-format json \
-              > "$RUNNER_TEMP/asc-apps.json" 2>"$RUNNER_TEMP/asc-apps.err"
-          }
-
-          AUTH_MODE=team
-          if ! list_apps; then
-            echo "Team-key list-apps failed; retrying as Individual key (--api-key-subject user)…"
+          if ! xcrun altool --list-apps \
+            --apiKey "$APP_STORE_CONNECT_KEY_ID" \
+            --apiIssuer "$APP_STORE_CONNECT_ISSUER_ID" \
+            --output-format json \
+            > "$RUNNER_TEMP/asc-apps.json" 2>"$RUNNER_TEMP/asc-apps.err"
+          then
+            echo "::error::App Store Connect API auth failed. The APP_STORE_CONNECT_KEY_ID / APP_STORE_CONNECT_ISSUER_ID / APP_STORE_CONNECT_API_KEY secrets do not form a valid, active Team API key. In App Store Connect → Users and Access → Integrations → App Store Connect API: confirm the key's status is Active (not Revoked) and its role is Admin or App Manager, then re-copy the Key ID and Issuer ID from that page. If there's any doubt about the .p8 contents, generate a new key (Apple only allows downloading the .p8 once) and update all three GitHub secrets together. Also check Settings → Environments → testflight in this repo for a same-named secret shadowing a correct repo-level one."
+            echo "Key ID length: ${#APP_STORE_CONNECT_KEY_ID}; Issuer ID length: ${#APP_STORE_CONNECT_ISSUER_ID}"
             cat "$RUNNER_TEMP/asc-apps.err" || true
-            if list_apps --api-key-subject user; then
-              AUTH_MODE=individual
-            else
-              echo "::error::App Store Connect API auth failed for both Team and Individual key modes."
-              echo "Key ID length: ${#APP_STORE_CONNECT_KEY_ID}; Issuer ID length: ${#APP_STORE_CONNECT_ISSUER_ID}"
-              cat "$RUNNER_TEMP/asc-apps.err" || true
-              exit 1
-            fi
+            exit 1
           fi
 
-          echo "ASC_AUTH_MODE=$AUTH_MODE" >> "$GITHUB_ENV"
-          echo "list-apps succeeded using $AUTH_MODE auth"
+          echo "list-apps succeeded"
           # Xcode 26.5 can exit successfully while writing no list-apps payload.
-          # That is inconclusive, not an auth failure; the explicit
+          # That is inconclusive, not proof of a working key — the explicit
           # --upload-package command below is the authoritative check.
           if [[ ! -s "$RUNNER_TEMP/asc-apps.json" ]]; then
             echo "::warning::altool list-apps returned an empty payload; continuing to upload-package with Kaido's explicit Apple ID."
@@ -316,53 +304,31 @@ jobs:
           # Xcode 26 altool prefers --upload-package with explicit app identity.
           # Legacy --upload-app looks up the Apple ID from the bundle ID and 401s
           # when that lookup fails — even if the .p8 itself is valid.
-          upload_package() {
-            local auth_args=("$@")
-            xcrun altool \
-              --upload-package "$IPA" \
-              --platform ios \
-              --apple-id "$ASC_APP_APPLE_ID" \
-              --bundle-id "$BUNDLE_ID" \
-              --bundle-short-version-string "$SHORT_VERSION" \
-              --bundle-version "$BUNDLE_VERSION" \
-              "${auth_args[@]}"
-          }
+          # Team API key only: Apple has confirmed altool does not accept
+          # Individual API keys, so a 401 here means the Team key itself needs
+          # attention in App Store Connect, not a different auth mode to try.
+          set +e
+          xcrun altool \
+            --upload-package "$IPA" \
+            --platform ios \
+            --apple-id "$ASC_APP_APPLE_ID" \
+            --bundle-id "$BUNDLE_ID" \
+            --bundle-short-version-string "$SHORT_VERSION" \
+            --bundle-version "$BUNDLE_VERSION" \
+            --apiKey "$APP_STORE_CONNECT_KEY_ID" \
+            --apiIssuer "$APP_STORE_CONNECT_ISSUER_ID" \
+            > "$RUNNER_TEMP/team-upload.log" 2>&1
+          upload_status=$?
+          set -e
+          cat "$RUNNER_TEMP/team-upload.log"
 
-          TEAM_AUTH=(
-            --apiKey "$APP_STORE_CONNECT_KEY_ID"
-            --apiIssuer "$APP_STORE_CONNECT_ISSUER_ID"
-          )
-          INDIVIDUAL_AUTH=(
-            --apiKey "$APP_STORE_CONNECT_KEY_ID"
-            # altool requires a non-empty issuer argument even for Individual
-            # keys; the key ID is the documented placeholder in user mode.
-            --apiIssuer "$APP_STORE_CONNECT_KEY_ID"
-            --api-key-subject user
-          )
-
-          if [[ "${ASC_AUTH_MODE:-team}" == "individual" ]]; then
-            upload_package "${INDIVIDUAL_AUTH[@]}"
-          else
-            set +e
-            upload_package "${TEAM_AUTH[@]}" \
-              > "$RUNNER_TEMP/team-upload.log" 2>&1
-            upload_status=$?
-            set -e
-            cat "$RUNNER_TEMP/team-upload.log"
-
-            if [[ $upload_status -eq 0 ]]; then
-              exit 0
-            fi
-
-            if grep -Eq 'NOT_AUTHORIZED|Unable to authenticate|status code 401' \
-              "$RUNNER_TEMP/team-upload.log"
-            then
-              echo "::warning::Team-key upload was rejected with 401; retrying as an Individual API key."
-              upload_package "${INDIVIDUAL_AUTH[@]}"
-            else
-              exit "$upload_status"
-            fi
+          if [[ $upload_status -ne 0 ]] && grep -Eq 'NOT_AUTHORIZED|Unable to authenticate|status code 401' \
+            "$RUNNER_TEMP/team-upload.log"
+          then
+            echo "::error::Upload rejected with 401 NOT_AUTHORIZED. The Team API key is not authorized for build uploads. In App Store Connect → Users and Access → Integrations → App Store Connect API, confirm the key's status is Active and its role is Admin or App Manager, and that it belongs to the same team that owns Kaido Ride (Apple ID $ASC_APP_APPLE_ID). If in doubt, generate a new key (the .p8 can only be downloaded once) and update APP_STORE_CONNECT_KEY_ID, APP_STORE_CONNECT_ISSUER_ID, and APP_STORE_CONNECT_API_KEY together — see README.md's TestFlight deployment section. Also check Settings → Environments → testflight for a stale secret of the same name overriding the repo-level one."
           fi
+
+          exit "$upload_status"
 
       - name: Clean up signing keychain
         if: always()

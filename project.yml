@@ -77,6 +77,10 @@ targets:
         PRODUCT_NAME: Kaido
         MARKETING_VERSION: "0.1.0"
         CURRENT_PROJECT_VERSION: "1"
+        # XcodeGen doesn't infer this from the AppIcon.appiconset folder name —
+        # without it, actool won't emit CFBundleIconName and app-store uploads
+        # are rejected for a missing icon even when the asset catalog has one.
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         # Signing comes from Config/*.xcconfig so CLI/archive overrides stay
         # off the xcodebuild command line (SPM resource bundles reject a
         # globally applied PROVISIONING_PROFILE_SPECIFIER).

@@ -9,6 +9,7 @@ enum KaidoModelContainer {
             Ride.self,
             BikeProfile.self,
             SavedPlace.self,
+            RiderProfile.self,
         ])
 
         let configuration = ModelConfiguration(
