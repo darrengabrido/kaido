@@ -335,11 +335,18 @@ final class GroupRideSessionStoreTests: XCTestCase {
         let (store, service, realtime, identity) = makeStore()
         try await createRideAsHost(store: store, service: service, identity: identity)
         await waitUntilConnected(store)
+        // Connecting also fires its own incidental `refreshFromServer()` — let it fully settle
+        // before seeding this test's own scenario, so it can't race the assertions below.
+        await waitForQuiescence()
         service.rideStore?.status = .ended // the real end_group_ride RPC already succeeded elsewhere
 
         realtime.capturedOnRideStatusChange?()
-        await waitUntil { store.ride?.status == .ended }
+        // Poll for the actual end-state effect (teardown), not `ride.status` alone — that field
+        // flips to `.ended` several awaits before `teardownLiveState` runs, so waiting on it would
+        // let this check race ahead of the disconnect it's meant to confirm.
+        await waitUntil { realtime.disconnectCallCount >= 1 }
 
+        XCTAssertEqual(store.ride?.status, .ended)
         XCTAssertEqual(store.connectionState, .disconnected)
         XCTAssertEqual(realtime.disconnectCallCount, 1)
     }
