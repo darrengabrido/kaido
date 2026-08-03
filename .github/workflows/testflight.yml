@@ -255,23 +255,26 @@ jobs:
 
       - name: Verify build number was stamped
         run: |
-          # Diagnostic gate: two prior deploy attempts still uploaded CFBundleVersion "1" despite
-          # the stamping above appearing to succeed, so fail fast here (before the ~5 minute
-          # Archive step) with the actual resolved value rather than find out after another full
-          # archive+export+upload cycle.
+          # Diagnostic gate: three prior deploy attempts still uploaded CFBundleVersion "1" —
+          # including one where the build-setting check below passed — so this now also inspects
+          # the raw Info.plist file XcodeGen wrote, and stops here unconditionally so the full
+          # diagnostic dump is readable without scrolling past the ~5 minute Archive step's output.
           echo "project.yml line:"
           grep CURRENT_PROJECT_VERSION project.yml
           echo
+          echo "Raw Kaido/Info.plist CFBundleVersion/CFBundleShortVersionString entries (as text):"
+          grep -A1 'CFBundleVersion\|CFBundleShortVersionString' Kaido/Info.plist
+          echo
+          echo "Same, read via PlistBuddy (shows the literal stored value, no build-setting substitution):"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' Kaido/Info.plist
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Kaido/Info.plist
+          echo
           echo "Xcode's resolved build setting for Release:"
           xcodebuild -showBuildSettings -project Kaido.xcodeproj -scheme Kaido -configuration Release 2>&1 \
-            | grep -i 'CURRENT_PROJECT_VERSION\|MARKETING_VERSION\|INFOPLIST_FILE\|GENERATE_INFOPLIST_FILE' \
-            | tee "$RUNNER_TEMP/build-settings.txt"
-          RESOLVED="$(awk '/CURRENT_PROJECT_VERSION/{print $NF}' "$RUNNER_TEMP/build-settings.txt" | head -1)"
-          echo "Resolved CURRENT_PROJECT_VERSION: $RESOLVED"
-          if [[ "$RESOLVED" == "1" ]]; then
-            echo "::error::CURRENT_PROJECT_VERSION still resolves to '1' even after stamping project.yml — something else (a per-configuration override, an xcconfig, or a cached value) is pinning it. See the build settings dump above."
-            exit 1
-          fi
+            | grep -i 'CURRENT_PROJECT_VERSION\|MARKETING_VERSION\|INFOPLIST_FILE\|GENERATE_INFOPLIST_FILE'
+          echo
+          echo "::error::Stopping here deliberately for this diagnostic run — see the dump above."
+          exit 1
 
       - name: Archive
         env:
