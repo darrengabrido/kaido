@@ -234,6 +234,11 @@ jobs:
         env:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
+          # App Store Connect requires every upload's CFBundleVersion to be strictly higher
+          # than any build previously uploaded for this app — from ANY source. `github.run_number`
+          # only counts runs of this one workflow, so it collides with builds Xcode Cloud already
+          # uploaded (it bumps CURRENT_PROJECT_VERSION independently). A UTC-minute timestamp has
+          # no shared counter to fall out of sync with and only increases over time.
           xcodebuild \
             -project Kaido.xcodeproj \
             -scheme Kaido \
@@ -242,7 +247,7 @@ jobs:
             -archivePath "$RUNNER_TEMP/Kaido.xcarchive" \
             DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
             OTHER_CODE_SIGN_FLAGS="--keychain $SIGNING_KEYCHAIN_PATH" \
-            CURRENT_PROJECT_VERSION="${{ github.run_number }}" \
+            CURRENT_PROJECT_VERSION="$(date -u +%Y%m%d%H%M)" \
             clean archive
 
       - name: Export IPA
