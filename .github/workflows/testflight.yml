@@ -229,52 +229,29 @@ jobs:
 
       - name: Generate Xcode project
         run: |
-          # App Store Connect requires every upload's CFBundleVersion to be strictly higher
-          # than any build previously uploaded for this app — from ANY source. `github.run_number`
-          # only counts runs of this one workflow, so it collides with builds Xcode Cloud already
-          # uploaded (it bumps CURRENT_PROJECT_VERSION independently). A command-line xcodebuild
-          # override (CURRENT_PROJECT_VERSION=... on the Archive step) did not reliably override
-          # the value XcodeGen bakes into the generated project, so stamp project.yml itself with a
-          # fresh UTC-minute timestamp before generating — nothing left to fall out of sync with,
-          # and it only increases over time regardless of which pipeline runs.
-          python3 - <<'PY'
-          import datetime
-          import pathlib
-          import re
-
-          path = pathlib.Path("project.yml")
-          text = path.read_text()
-          build_number = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d%H%M")
-          text, count = re.subn(r'CURRENT_PROJECT_VERSION: "[^"]*"', f'CURRENT_PROJECT_VERSION: "{build_number}"', text)
-          if count == 0:
-              raise SystemExit("CURRENT_PROJECT_VERSION not found in project.yml")
-          path.write_text(text)
-          print(f"Stamped CURRENT_PROJECT_VERSION={build_number}")
-          PY
           xcodegen generate
+
+          # App Store Connect requires every upload's CFBundleVersion to be strictly higher than
+          # any build previously uploaded for this app — from ANY source. A diagnostic run proved
+          # xcodebuild resolves CURRENT_PROJECT_VERSION as a build setting correctly, but XcodeGen's
+          # `info.properties` merge (see project.yml's `targets.Kaido.info` block) still writes its
+          # own literal "1"/"1.0" directly into Kaido/Info.plist, overriding the
+          # $(CURRENT_PROJECT_VERSION)/$(MARKETING_VERSION) placeholders in the committed file — so
+          # no build-setting override, however it's supplied, ever reaches the archived app. Stamp
+          # the generated file directly, after xcodegen has already had its say, so nothing
+          # overwrites it afterward.
+          BUILD_NUMBER="$(date -u +%Y%m%d%H%M)"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" Kaido/Info.plist
+          echo "Stamped Kaido/Info.plist CFBundleVersion=$BUILD_NUMBER"
 
       - name: Verify build number was stamped
         run: |
-          # Diagnostic gate: three prior deploy attempts still uploaded CFBundleVersion "1" —
-          # including one where the build-setting check below passed — so this now also inspects
-          # the raw Info.plist file XcodeGen wrote, and stops here unconditionally so the full
-          # diagnostic dump is readable without scrolling past the ~5 minute Archive step's output.
-          echo "project.yml line:"
-          grep CURRENT_PROJECT_VERSION project.yml
-          echo
-          echo "Raw Kaido/Info.plist CFBundleVersion/CFBundleShortVersionString entries (as text):"
-          grep -A1 'CFBundleVersion\|CFBundleShortVersionString' Kaido/Info.plist
-          echo
-          echo "Same, read via PlistBuddy (shows the literal stored value, no build-setting substitution):"
-          /usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' Kaido/Info.plist
-          /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Kaido/Info.plist
-          echo
-          echo "Xcode's resolved build setting for Release:"
-          xcodebuild -showBuildSettings -project Kaido.xcodeproj -scheme Kaido -configuration Release 2>&1 \
-            | grep -i 'CURRENT_PROJECT_VERSION\|MARKETING_VERSION\|INFOPLIST_FILE\|GENERATE_INFOPLIST_FILE'
-          echo
-          echo "::error::Stopping here deliberately for this diagnostic run — see the dump above."
-          exit 1
+          RESOLVED="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' Kaido/Info.plist)"
+          echo "Kaido/Info.plist CFBundleVersion: $RESOLVED"
+          if [[ "$RESOLVED" == "1" ]]; then
+            echo "::error::Kaido/Info.plist still has CFBundleVersion '1' after stamping — the PlistBuddy write in the previous step didn't take effect."
+            exit 1
+          fi
 
       - name: Archive
         env:
