@@ -62,10 +62,14 @@ xcodegen generate
 # Clear both documented SPM cache locations so each run resolves clean.
 rm -rf "$HOME/Library/Caches/org.swift.swiftpm" "$HOME/Library/org.swift.swiftpm"
 
-# Xcode Cloud's Archive action runs with automatic package resolution
-# disabled and expects a pre-existing Package.resolved — reasonable for a
-# committed .xcodeproj, but this one is regenerated fresh every run and
-# never had one to begin with. Resolve explicitly now, while automatic
-# resolution is still allowed, so the Archive action finds a resolved file
-# already in place instead of failing with "a resolved file is required".
+# Xcode Cloud's build machines ship with these two Xcode user defaults
+# pre-set, which block ANY package resolution — including this script's own
+# explicit call below — until a Package.resolved already exists. That's a
+# dead end for a project whose .xcodeproj is regenerated fresh every run and
+# never has one. Clearing them is Apple's own documented workaround (see
+# https://github.com/apple/swift-package-manager/issues/6914); delete is a
+# no-op if a given key isn't actually set, hence the fallback to true.
+defaults delete com.apple.dt.Xcode IDEPackageOnlyUseVersionsFromResolvedFile 2>/dev/null || true
+defaults delete com.apple.dt.Xcode IDEDisableAutomaticPackageResolution 2>/dev/null || true
+
 xcodebuild -resolvePackageDependencies -project Kaido.xcodeproj
