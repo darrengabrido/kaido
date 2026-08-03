@@ -60,6 +60,26 @@ brew install xcodegen
 } > "$HOME/.netrc"
 chmod 0600 "$HOME/.netrc"
 
+# Belt-and-suspenders: also register the same credential in the login
+# keychain. GitHub Actions resolves these same binary targets fine with only
+# .netrc, but Xcode Cloud's build system has 403'd on every Mapbox binary
+# target across every token value, Xcode version, and cache state tried so
+# far — which points at .netrc specifically not reaching the sandboxed
+# subprocess that downloads binary targets (as opposed to the plain `git`
+# subprocess used for source dependencies, which has worked every time).
+# Apple's URL loading system also checks the keychain for matching Internet
+# passwords, a separate code path from .netrc. Best-effort: never fail the
+# build over this.
+security add-internet-password -a mapbox -s api.mapbox.com -w "$MAPBOX_DOWNLOADS_TOKEN" -U 2>/dev/null || true
+
+# Diagnostic only — does not gate the build. Proves or rules out the token
+# itself independent of Xcode's own downloader, by hitting the exact URL
+# that's been failing, once via .netrc and once with explicit Basic auth.
+MAPBOX_PROBE_URL="https://api.mapbox.com/downloads/v2/mapbox-common/releases/ios/packages/24.27.0/MapboxCommon.zip"
+echo "Mapbox auth probe (diagnostic, not build-blocking):"
+echo "  curl -n (netrc):        HTTP $(curl -s -o /dev/null -w '%{http_code}' -n "$MAPBOX_PROBE_URL" || echo curl-error)"
+echo "  curl -u (explicit auth): HTTP $(curl -s -o /dev/null -w '%{http_code}' -u "mapbox:$MAPBOX_DOWNLOADS_TOKEN" "$MAPBOX_PROBE_URL" || echo curl-error)"
+
 # The .xcodeproj isn't checked into git — Xcode Cloud needs it generated
 # fresh on every clone, same as the GitHub Actions "Generate Xcode project"
 # step.
