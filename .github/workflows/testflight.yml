@@ -228,17 +228,35 @@ jobs:
           fi
 
       - name: Generate Xcode project
-        run: xcodegen generate
+        run: |
+          # App Store Connect requires every upload's CFBundleVersion to be strictly higher
+          # than any build previously uploaded for this app — from ANY source. `github.run_number`
+          # only counts runs of this one workflow, so it collides with builds Xcode Cloud already
+          # uploaded (it bumps CURRENT_PROJECT_VERSION independently). A command-line xcodebuild
+          # override (CURRENT_PROJECT_VERSION=... on the Archive step) did not reliably override
+          # the value XcodeGen bakes into the generated project, so stamp project.yml itself with a
+          # fresh UTC-minute timestamp before generating — nothing left to fall out of sync with,
+          # and it only increases over time regardless of which pipeline runs.
+          python3 - <<'PY'
+          import datetime
+          import pathlib
+          import re
+
+          path = pathlib.Path("project.yml")
+          text = path.read_text()
+          build_number = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d%H%M")
+          text, count = re.subn(r'CURRENT_PROJECT_VERSION: "[^"]*"', f'CURRENT_PROJECT_VERSION: "{build_number}"', text)
+          if count == 0:
+              raise SystemExit("CURRENT_PROJECT_VERSION not found in project.yml")
+          path.write_text(text)
+          print(f"Stamped CURRENT_PROJECT_VERSION={build_number}")
+          PY
+          xcodegen generate
 
       - name: Archive
         env:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          # App Store Connect requires every upload's CFBundleVersion to be strictly higher
-          # than any build previously uploaded for this app — from ANY source. `github.run_number`
-          # only counts runs of this one workflow, so it collides with builds Xcode Cloud already
-          # uploaded (it bumps CURRENT_PROJECT_VERSION independently). A UTC-minute timestamp has
-          # no shared counter to fall out of sync with and only increases over time.
           xcodebuild \
             -project Kaido.xcodeproj \
             -scheme Kaido \
@@ -247,7 +265,6 @@ jobs:
             -archivePath "$RUNNER_TEMP/Kaido.xcarchive" \
             DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
             OTHER_CODE_SIGN_FLAGS="--keychain $SIGNING_KEYCHAIN_PATH" \
-            CURRENT_PROJECT_VERSION="$(date -u +%Y%m%d%H%M)" \
             clean archive
 
       - name: Export IPA
