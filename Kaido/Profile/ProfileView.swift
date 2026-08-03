@@ -13,6 +13,7 @@ struct ProfileView: View {
                 riderProfileSection
                 accountSection
                 spotifySection
+                diagnosticsSection
             }
             .navigationTitle("Profile")
             .task {
@@ -118,6 +119,16 @@ struct ProfileView: View {
             Text("Spotify")
         } footer: {
             Text("Playback controls appear on screen during turn-by-turn navigation.")
+        }
+    }
+
+    private var diagnosticsSection: some View {
+        Section {
+            NavigationLink("Debug Log") {
+                DebugLogView()
+            }
+        } footer: {
+            Text("Sign-in and Spotify connection attempts are recorded here for troubleshooting.")
         }
     }
 }
