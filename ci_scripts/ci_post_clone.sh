@@ -55,6 +55,13 @@ chmod 0600 "$HOME/.netrc"
 # step.
 xcodegen generate
 
+# Xcode Cloud persists SPM's package cache across separate builds, including
+# ones that failed mid-download — a prior run dying partway through fetching
+# Mapbox's authenticated binary frameworks can leave a corrupt/incomplete
+# artifact behind that every subsequent resolve trips over identically.
+# Clear both documented SPM cache locations so each run resolves clean.
+rm -rf "$HOME/Library/Caches/org.swift.swiftpm" "$HOME/Library/org.swift.swiftpm"
+
 # Xcode Cloud's Archive action runs with automatic package resolution
 # disabled and expects a pre-existing Package.resolved — reasonable for a
 # committed .xcodeproj, but this one is regenerated fresh every run and
