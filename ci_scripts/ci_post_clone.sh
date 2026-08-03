@@ -6,6 +6,16 @@ set -euo pipefail
 # relies on relative paths.
 cd "$CI_PRIMARY_REPOSITORY_PATH"
 
+# Xcode Cloud's Environment Variables UI (like most secret-paste fields) can
+# silently introduce leading/trailing whitespace or a stray newline, which
+# breaks token auth without changing how the value looks on screen — the
+# same class of bug already fixed for the App Store Connect Key ID/Issuer ID
+# in testflight.yml. Trim before validating, so a whitespace-only value is
+# correctly caught as "missing" rather than producing a broken credential.
+for name in APPLE_TEAM_ID MAPBOX_ACCESS_TOKEN MAPBOX_DOWNLOADS_TOKEN SUPABASE_HOST SUPABASE_ANON_KEY SPOTIFY_CLIENT_ID; do
+  typeset -g "$name=$(printf '%s' "${(P)name:-}" | tr -d '[:space:]')"
+done
+
 # Fail fast with a clear message instead of a bare "unbound variable" crash
 # or, worse, a confusing Swift Package resolution error further downstream.
 # Mirrors testflight.yml's "Validate deployment secrets" step, minus the
