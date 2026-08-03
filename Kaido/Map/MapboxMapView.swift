@@ -11,6 +11,7 @@ struct MapboxMapView: View {
     let locationManager: LocationManager
 
     @Environment(BikeBLEManager.self) private var bleManager
+    @Environment(GroupRideSessionStore.self) private var rideTogetherSession
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \BikeProfile.lastConnectedAt, order: .reverse) private var bikeProfiles: [BikeProfile]
     @Query(sort: \SavedPlace.createdAt) private var savedPlaces: [SavedPlace]
@@ -25,6 +26,14 @@ struct MapboxMapView: View {
     @State private var placeDetailsCardHeight: CGFloat = 420
     @GestureState private var placeDetailsDragTranslation: CGFloat = 0
     @FocusState private var isSearchFocused: Bool
+
+    // Ride Together
+    @State private var isPresentingRideTogetherLobby = false
+    @State private var isPresentingRideTogetherNamePrompt = false
+    @State private var pendingRideTogetherCreation: PendingRideTogetherCreation?
+    @State private var pendingRawInviteToken: String?
+    @State private var rideTogetherErrorMessage: String?
+    @State private var isCreatingRideTogether = false
 
     private static let placeDetailsCardDetents: [CGFloat] = [190, 420, 560]
 
@@ -182,6 +191,15 @@ struct MapboxMapView: View {
                 fetchRoutes(to: destination)
             }
         }
+        .onChange(of: rideTogetherSession.ride?.id) { _, newRideId in
+            // Covers joining via a deep link handled elsewhere (ContentView) as well as this
+            // view's own `createRideTogether` — either way, a freshly (re)joined ride should
+            // land in the lobby unless we're already showing it or already navigating.
+            guard newRideId != nil, rideTogetherSession.hasActiveRide,
+                  !isPresentingRideTogetherLobby, !isPresentingNavigation
+            else { return }
+            isPresentingRideTogetherLobby = true
+        }
         .onChange(of: shouldShowDiscover) { _, inFreeRide in
             if inFreeRide {
                 discoverViewModel.refreshIfNeeded(
@@ -200,13 +218,38 @@ struct MapboxMapView: View {
                 snapPlaceDetailsCard(to: Self.placeDetailsCardDetents.last ?? 560)
             }
         }
+        .fullScreenCover(isPresented: $isPresentingRideTogetherLobby) {
+            GroupRideLobbyView(
+                initialRawInviteToken: pendingRawInviteToken,
+                onStartNavigating: {
+                    isPresentingRideTogetherLobby = false
+                    isPresentingNavigation = true
+                },
+                onDismiss: { isPresentingRideTogetherLobby = false }
+            )
+        }
+        .sheet(isPresented: $isPresentingRideTogetherNamePrompt) {
+            GroupRideDisplayNamePromptView(
+                title: String(localized: "What should riders call you?"),
+                message: String(localized: "This name is only shown to riders in this group, for this ride."),
+                onSubmit: { name in
+                    isPresentingRideTogetherNamePrompt = false
+                    Task { await createRideTogether(displayName: name) }
+                },
+                onCancel: {
+                    isPresentingRideTogetherNamePrompt = false
+                    pendingRideTogetherCreation = nil
+                }
+            )
+        }
         .fullScreenCover(isPresented: $isPresentingNavigation) {
             // Capture routes up front so a preference re-rank can't blank the cover mid-present.
             if let navigationRoutes = navigationViewModel.navigationRoutes {
                 NavigationSessionView(
                     navigationRoutes: navigationRoutes,
                     telemetry: bleManager.telemetry,
-                    rideTimeProfile: navigationViewModel.rideTimeProfile
+                    rideTimeProfile: navigationViewModel.rideTimeProfile,
+                    groupRideSessionStore: rideTogetherSession.hasActiveRide ? rideTogetherSession : nil
                 ) { _ in
                     isPresentingNavigation = false
                     navigationViewModel.clear()
@@ -578,9 +621,93 @@ struct MapboxMapView: View {
                 routeOptionsList
             }
 
+            if let rideTogetherErrorMessage {
+                Text(rideTogetherErrorMessage)
+                    .font(.caption)
+                    .foregroundStyle(Color.statusCritical)
+            }
+
             startNavigationButton
+            rideTogetherButton
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private struct PendingRideTogetherCreation {
+        let destination: SearchResult
+        let option: RouteOption
+        let allOptions: [RouteOption]
+    }
+
+    private var rideTogetherButton: some View {
+        Button {
+            Task { await startRideTogetherFlow() }
+        } label: {
+            if isCreatingRideTogether {
+                ProgressView().frame(maxWidth: .infinity)
+            } else {
+                Label("Ride Together", systemImage: "person.2.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 4)
+            }
+        }
+        .buttonStyle(.bordered)
+        .tint(.kaidoViolet)
+        .disabled(isRouteUnavailable || isCreatingRideTogether)
+        .accessibilityHint("Invite other riders to navigate to this destination together")
+    }
+
+    private func startRideTogetherFlow() async {
+        guard let destination = searchViewModel.selectedDestination,
+              let mainOption = navigationViewModel.routeOptions.first(where: \.isMain)
+        else { return }
+
+        let pending = PendingRideTogetherCreation(
+            destination: destination,
+            option: mainOption,
+            allOptions: navigationViewModel.routeOptions
+        )
+        if GroupRideDisplayNameStore.current != nil {
+            await createRideTogether(displayName: GroupRideDisplayNameStore.current ?? "Host", pending: pending)
+        } else {
+            pendingRideTogetherCreation = pending
+            isPresentingRideTogetherNamePrompt = true
+        }
+    }
+
+    private func createRideTogether(displayName: String) async {
+        guard let pending = pendingRideTogetherCreation else { return }
+        await createRideTogether(displayName: displayName, pending: pending)
+    }
+
+    private func createRideTogether(displayName: String, pending: PendingRideTogetherCreation) async {
+        isCreatingRideTogether = true
+        rideTogetherErrorMessage = nil
+        defer { isCreatingRideTogether = false }
+
+        let originCoordinate = locationManager.currentLocation?.coordinate ?? pending.destination.coordinate
+        let snapshot = GroupRideRouteSnapshot(
+            destinationName: pending.destination.name,
+            waypointCoordinates: [originCoordinate, pending.destination.coordinate],
+            selecting: pending.option,
+            among: pending.allOptions
+        )
+
+        do {
+            let result = try await rideTogetherSession.createRide(
+                destinationName: pending.destination.name,
+                destination: pending.destination.coordinate,
+                routeSnapshot: snapshot,
+                title: nil,
+                displayName: displayName
+            )
+            pendingRawInviteToken = result.rawInviteToken
+            pendingRideTogetherCreation = nil
+            isPresentingRideTogetherLobby = true
+        } catch {
+            rideTogetherErrorMessage = error.localizedDescription
+        }
     }
 
     private var startNavigationButton: some View {

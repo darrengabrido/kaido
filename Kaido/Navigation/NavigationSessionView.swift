@@ -8,6 +8,9 @@ struct NavigationSessionView: UIViewControllerRepresentable {
     let navigationRoutes: NavigationRoutes
     let telemetry: BikeTelemetry
     let rideTimeProfile: RideTimeProfile
+    /// Present only when Ride Together is active for this navigation session — `nil` (the
+    /// default) reproduces solo navigation exactly as before this feature existed.
+    var groupRideSessionStore: GroupRideSessionStore? = nil
     let onDismiss: (Bool) -> Void
 
     func makeUIViewController(context: Context) -> NavigationViewController {
@@ -39,6 +42,9 @@ struct NavigationSessionView: UIViewControllerRepresentable {
         // chrome on the next run loop once the VC is in the hierarchy.
         DispatchQueue.main.async {
             self.addNavigationChrome(to: viewController, coordinator: context.coordinator)
+            if let groupRideSessionStore, groupRideSessionStore.hasActiveRide {
+                context.coordinator.attachGroupRide(sessionStore: groupRideSessionStore, to: viewController)
+            }
         }
         return viewController
     }
@@ -156,6 +162,10 @@ struct NavigationSessionView: UIViewControllerRepresentable {
         private var lastAppliedPadding: UIEdgeInsets?
         private var lastFollowState: Bool?
 
+        private var groupRideSessionStore: GroupRideSessionStore?
+        private var groupRideOverlayController: GroupRideMapOverlayController?
+        private weak var groupRideHostingController: UIViewController?
+
         init(
             onDismiss: @escaping (Bool) -> Void,
             rideTimeProfile: RideTimeProfile
@@ -246,11 +256,60 @@ struct NavigationSessionView: UIViewControllerRepresentable {
             refreshViewportPadding()
         }
 
+        /// Wires Ride Together into this navigation session's existing map: a location source
+        /// reusing Mapbox's own map-matched puck feed, a marker overlay on that same `MapView`,
+        /// and the SwiftUI chrome (group pill, participant sheet, quick messages, banners) as one
+        /// additional child `UIHostingController`, mirroring how the Now Playing bar is added.
+        @MainActor
+        func attachGroupRide(sessionStore: GroupRideSessionStore, to viewController: NavigationViewController) {
+            guard let mapView = viewController.navigationMapView?.mapView else { return }
+
+            groupRideSessionStore = sessionStore
+            sessionStore.attachLiveNavigation(locationSource: NavigationMapViewLocationSource(mapView: mapView))
+
+            let overlayController = GroupRideMapOverlayController(mapView: mapView, sessionStore: sessionStore)
+            groupRideOverlayController = overlayController
+
+            let hosting = UIHostingController(
+                rootView: GroupRideNavigationOverlay(overlayController: overlayController)
+                    .environment(sessionStore)
+            )
+            hosting.view.backgroundColor = .clear
+            hosting.view.translatesAutoresizingMaskIntoConstraints = false
+
+            viewController.addChild(hosting)
+            viewController.view.addSubview(hosting.view)
+            hosting.didMove(toParent: viewController)
+            groupRideHostingController = hosting
+
+            NSLayoutConstraint.activate([
+                hosting.view.topAnchor.constraint(equalTo: viewController.view.safeAreaLayoutGuide.topAnchor),
+                hosting.view.leadingAnchor.constraint(equalTo: viewController.view.leadingAnchor),
+                hosting.view.trailingAnchor.constraint(equalTo: viewController.view.trailingAnchor),
+                hosting.view.bottomAnchor.constraint(equalTo: viewController.view.bottomAnchor)
+            ])
+        }
+
+        /// Guarantees location publication and the marker refresh loop stop the moment this
+        /// navigation session ends, regardless of whether Ride Together was ever attached.
+        @MainActor
+        private func detachGroupRideIfNeeded() {
+            groupRideOverlayController?.stop()
+            groupRideOverlayController = nil
+            groupRideSessionStore?.detachLiveNavigation()
+            groupRideSessionStore = nil
+            groupRideHostingController?.willMove(toParent: nil)
+            groupRideHostingController?.view.removeFromSuperview()
+            groupRideHostingController?.removeFromParent()
+            groupRideHostingController = nil
+        }
+
         func navigationViewControllerDidDismiss(
             _ navigationViewController: NavigationViewController,
             byCanceling canceled: Bool
         ) {
             cameraCancellable?.cancel()
+            detachGroupRideIfNeeded()
             onDismiss(canceled)
         }
     }

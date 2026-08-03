@@ -14,6 +14,54 @@ struct RouteOption: Identifiable {
     let coordinates: [CLLocationCoordinate2D]
     let isMain: Bool
     fileprivate let alternativeRoute: AlternativeRoute?
+
+    /// Explicit replacement for the compiler-synthesized memberwise initializer — adding the
+    /// testable convenience initializer below would otherwise suppress it entirely, breaking
+    /// every existing call site in `routeOptions`.
+    fileprivate init(
+        id: String,
+        distanceMeters: Double,
+        expectedTravelTime: TimeInterval,
+        personalizedTravelTime: TimeInterval,
+        stressProfile: RouteStressScorer.Profile,
+        coordinates: [CLLocationCoordinate2D],
+        isMain: Bool,
+        alternativeRoute: AlternativeRoute?
+    ) {
+        self.id = id
+        self.distanceMeters = distanceMeters
+        self.expectedTravelTime = expectedTravelTime
+        self.personalizedTravelTime = personalizedTravelTime
+        self.stressProfile = stressProfile
+        self.coordinates = coordinates
+        self.isMain = isMain
+        self.alternativeRoute = alternativeRoute
+    }
+
+    /// Testable/synthetic construction — `alternativeRoute` stays `nil`, so a `RouteOption` built
+    /// this way behaves like `isMain` for `NavigationViewModel.selectRoute` purposes. Exists
+    /// because the fileprivate initializer above would otherwise make `RouteOption` impossible to
+    /// construct from outside this file — including from `GroupRideRouteSnapshot`'s tests.
+    init(
+        id: String,
+        distanceMeters: Double,
+        expectedTravelTime: TimeInterval,
+        personalizedTravelTime: TimeInterval,
+        stressProfile: RouteStressScorer.Profile,
+        coordinates: [CLLocationCoordinate2D],
+        isMain: Bool
+    ) {
+        self.init(
+            id: id,
+            distanceMeters: distanceMeters,
+            expectedTravelTime: expectedTravelTime,
+            personalizedTravelTime: personalizedTravelTime,
+            stressProfile: stressProfile,
+            coordinates: coordinates,
+            isMain: isMain,
+            alternativeRoute: nil
+        )
+    }
 }
 
 @Observable

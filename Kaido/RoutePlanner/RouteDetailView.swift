@@ -7,11 +7,17 @@ struct RouteDetailView: View {
 
     @Environment(\.modelContext) private var modelContext
     @Environment(BikeBLEManager.self) private var bleManager
+    @Environment(GroupRideSessionStore.self) private var rideTogetherSession
     @Query(sort: \BikeProfile.lastConnectedAt, order: .reverse) private var bikeProfiles: [BikeProfile]
     @State private var viewport: Viewport
     @State private var navigationViewModel = NavigationViewModel()
     @State private var isPresentingNavigation = false
     @State private var showBikeLanes = true
+    @State private var isPresentingRideTogetherLobby = false
+    @State private var isPresentingRideTogetherNamePrompt = false
+    @State private var pendingRawInviteToken: String?
+    @State private var isCreatingRideTogether = false
+    @State private var rideTogetherErrorMessage: String?
 
     init(route: Route) {
         self.route = route
@@ -111,6 +117,27 @@ struct RouteDetailView: View {
                 .buttonStyle(.glassProminent)
                 .tint(.kaidoViolet)
                 .disabled(navigationViewModel.isRequestingRoute || coordinates.count < 2)
+
+                if let rideTogetherErrorMessage {
+                    Text(rideTogetherErrorMessage)
+                        .font(.caption)
+                        .foregroundStyle(Color.statusCritical)
+                }
+
+                Button {
+                    Task { await startRideTogetherFlow() }
+                } label: {
+                    if isCreatingRideTogether {
+                        ProgressView().frame(maxWidth: .infinity)
+                    } else {
+                        Label("Ride Together", systemImage: "person.2.fill")
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+                .buttonStyle(.bordered)
+                .tint(.kaidoViolet)
+                .disabled(isCreatingRideTogether || navigationViewModel.isRequestingRoute || coordinates.count < 2)
+                .accessibilityHint("Invite other riders to navigate this route together")
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding()
@@ -135,13 +162,35 @@ struct RouteDetailView: View {
                 .tint(.kaidoViolet)
             }
         }
+        .fullScreenCover(isPresented: $isPresentingRideTogetherLobby) {
+            GroupRideLobbyView(
+                initialRawInviteToken: pendingRawInviteToken,
+                onStartNavigating: {
+                    isPresentingRideTogetherLobby = false
+                    isPresentingNavigation = true
+                },
+                onDismiss: { isPresentingRideTogetherLobby = false }
+            )
+        }
+        .sheet(isPresented: $isPresentingRideTogetherNamePrompt) {
+            GroupRideDisplayNamePromptView(
+                title: String(localized: "What should riders call you?"),
+                message: String(localized: "This name is only shown to riders in this group, for this ride."),
+                onSubmit: { name in
+                    isPresentingRideTogetherNamePrompt = false
+                    Task { await createRideTogether(displayName: name) }
+                },
+                onCancel: { isPresentingRideTogetherNamePrompt = false }
+            )
+        }
         .fullScreenCover(isPresented: $isPresentingNavigation) {
             if let navigationRoutes = navigationViewModel.navigationRoutes {
                 ZStack(alignment: .bottomTrailing) {
                     NavigationSessionView(
                         navigationRoutes: navigationRoutes,
                         telemetry: bleManager.telemetry,
-                        rideTimeProfile: navigationViewModel.rideTimeProfile
+                        rideTimeProfile: navigationViewModel.rideTimeProfile,
+                        groupRideSessionStore: rideTogetherSession.hasActiveRide ? rideTogetherSession : nil
                     ) { _ in
                         logRide()
                         isPresentingNavigation = false
@@ -172,7 +221,60 @@ struct RouteDetailView: View {
         let ride = Ride(route: route)
         ride.endedAt = Date()
         ride.distanceMeters = route.distanceMeters
+        // Group metadata only — never other riders' locations or identities.
+        if let groupRide = rideTogetherSession.ride, rideTogetherSession.hasActiveRide {
+            ride.groupRideId = groupRide.id
+            ride.groupRideParticipantCount = rideTogetherSession.members.filter(\.isActive).count
+            ride.wasGroupRideHost = rideTogetherSession.isHost
+        }
         modelContext.insert(ride)
+    }
+
+    private func startRideTogetherFlow() async {
+        if navigationViewModel.navigationRoutes == nil {
+            navigationViewModel.updateRideTimeProfile(activeRideTimeProfile)
+            await navigationViewModel.requestRoutes(waypointCoordinates: coordinates)
+        }
+        guard navigationViewModel.routeOptions.first(where: \.isMain) != nil else {
+            rideTogetherErrorMessage = navigationViewModel.requestError
+                ?? String(localized: "Couldn't prepare a route for this ride.")
+            return
+        }
+        if GroupRideDisplayNameStore.current != nil {
+            await createRideTogether(displayName: GroupRideDisplayNameStore.current ?? "Host")
+        } else {
+            isPresentingRideTogetherNamePrompt = true
+        }
+    }
+
+    private func createRideTogether(displayName: String) async {
+        guard let mainOption = navigationViewModel.routeOptions.first(where: \.isMain) else { return }
+        isCreatingRideTogether = true
+        rideTogetherErrorMessage = nil
+        defer { isCreatingRideTogether = false }
+
+        let snapshot = GroupRideRouteSnapshot(
+            destinationName: route.name,
+            waypointCoordinates: coordinates,
+            selecting: mainOption,
+            among: navigationViewModel.routeOptions
+        )
+        let destinationCoordinate = coordinates.last ?? mainOption.coordinates.last
+            ?? CLLocationCoordinate2D(latitude: 0, longitude: 0)
+
+        do {
+            let result = try await rideTogetherSession.createRide(
+                destinationName: route.name,
+                destination: destinationCoordinate,
+                routeSnapshot: snapshot,
+                title: route.name,
+                displayName: displayName
+            )
+            pendingRawInviteToken = result.rawInviteToken
+            isPresentingRideTogetherLobby = true
+        } catch {
+            rideTogetherErrorMessage = error.localizedDescription
+        }
     }
 
     private var activeRideTimeProfile: RideTimeProfile {

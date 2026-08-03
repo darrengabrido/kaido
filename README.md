@@ -16,13 +16,15 @@ Bundle ID: `com.oaktreehouse.kaido`
 - **Ride history** — routes and past rides persist locally and sync across devices via CloudKit.
 - **Live bike telemetry** over Bluetooth LE — speed, cadence, and battery, read from standard Cycling Speed & Cadence and Battery GATT profiles and shown in a heads-up display during navigation.
 - **Optional sign-in** — Sign in with Apple or email/password via Supabase Auth, or skip it entirely and ride as a guest. Guest mode is remembered across launches, and you can sign in later from the Bike tab.
+- **Ride Together** — invite-only group navigation: create a group from a route or destination, share a secure invite link, see other riders as live markers during turn-by-turn navigation, and send safety-oriented quick messages (preset, custom, or dictated). Guests get a transparent, feature-scoped anonymous session rather than being asked to create an account. See [`docs/RideTogether.md`](docs/RideTogether.md) for architecture, required Supabase setup, and a manual testing checklist.
 
 ## Tech stack
 
 - SwiftUI, targeting iOS 26+
 - [Mapbox Maps SDK](https://github.com/mapbox/mapbox-maps-ios) (v11) and [Mapbox Navigation SDK](https://github.com/mapbox/mapbox-navigation-ios) (v3)
 - SwiftData with CloudKit sync
-- [Supabase Auth](https://github.com/supabase/supabase-swift) (v2) — Sign in with Apple + email/password
+- [Supabase Auth](https://github.com/supabase/supabase-swift) (v2) — Sign in with Apple + email/password, plus anonymous sessions for Ride Together guests
+- Supabase Database + Realtime (Broadcast/Presence) — Ride Together group state and live rider locations
 - Core Bluetooth (CBCentralManager/CBPeripheral)
 - [XcodeGen](https://github.com/yonaskolb/XcodeGen) — the `.xcodeproj` is generated from `project.yml` and is not checked into git
 
@@ -38,8 +40,13 @@ Kaido/
 ├── Models/          SwiftData models (Route, Waypoint, Ride, BikeProfile)
 ├── Navigation/      Directions/routing and turn-by-turn session view
 ├── Persistence/     SwiftData model container
+├── RideTogether/    Group-ride domain, Supabase networking, session/location/map/messaging
 ├── RoutePlanner/    Route drawing, saved routes list, route detail
 └── Theme/           Shared colors and styling
+
+KaidoTests/          Unit tests (state machine, throttling, staleness, dedup, deep links, ...)
+supabase/            SQL migrations + a manual RLS/RPC verification script for Ride Together
+docs/                Feature docs (Ride Together architecture, setup, testing checklist)
 ```
 
 ## Getting started
@@ -114,6 +121,25 @@ Because Kaido uses Apple's *native* sign-in (an on-device ID token exchanged via
 
 Sign in with Apple only works end-to-end on a device or simulator signed into an Apple Account.
 
+### Enabling Ride Together
+
+Reuses the same Supabase project as sign-in — no separate project needed. See
+[`docs/RideTogether.md`](docs/RideTogether.md) for the full setup (applying
+`supabase/migrations/0001_group_rides.sql`, enabling anonymous sign-ins, and confirming Realtime
+Authorization), plus a two-device manual testing checklist.
+
+### Running tests
+
+`KaidoTests` covers Ride Together's pure domain/state logic (state machine, route-snapshot
+Codable round trip, location throttling/staleness, message dedup, deep-link parsing, invite-token
+redaction) against fakes — no live Supabase project, network access, or GPS required:
+
+```
+xcodebuild -project Kaido.xcodeproj -scheme Kaido -destination "platform=iOS Simulator,name=iPhone 16" test
+```
+
+The `iOS Build` GitHub Actions workflow runs this on every push/PR alongside the existing build.
+
 ## Status
 
-Actively in development. Turn-by-turn navigation, bike lane visualization, destination search, route planning, optional sign-in, and the BLE scaffold are all working. Live BLE telemetry has not yet been verified against real bike hardware, and Sign in with Apple has not yet been verified end-to-end against a configured Supabase project.
+Actively in development. Turn-by-turn navigation, bike lane visualization, destination search, route planning, optional sign-in, the BLE scaffold, and an initial Ride Together group-navigation MVP are all working. Live BLE telemetry has not yet been verified against real bike hardware, Sign in with Apple has not yet been verified end-to-end against a configured Supabase project, and Ride Together's Supabase Realtime integration has not yet been exercised against a live project from this environment (see `docs/RideTogether.md`'s Known limitations).

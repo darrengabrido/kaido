@@ -25,6 +25,13 @@ final class Ride {
     @Attribute(.externalStorage)
     var recordedPathData: Data?
 
+    // Ride Together — additive/optional so existing solo-ride CloudKit records are unaffected
+    // (nil/false for every ride recorded before this feature existed, and for every solo ride
+    // going forward). Never stores other riders' locations — only this rider's own summary.
+    var groupRideId: UUID?
+    var groupRideParticipantCount: Int?
+    var wasGroupRideHost: Bool = false
+
     init(route: Route? = nil) {
         self.id = UUID()
         self.route = route
