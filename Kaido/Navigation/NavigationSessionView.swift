@@ -62,7 +62,9 @@ struct NavigationSessionView: UIViewControllerRepresentable {
         // Same bike puck as the browsing/route-preview maps (BikePuckImage) — this is the view
         // that's actually on screen while GPS is driving turn-by-turn guidance.
         if let navigationMapView = viewController.navigationMapView {
-            navigationMapView.puckType = .puck2D(Puck2DConfiguration(bearingImage: BikePuckImage.bearing))
+            navigationMapView.puckType = .puck2D(
+                Puck2DConfiguration(bearingImage: BikePuckImage.bearing, pulsing: BikePuckImage.pulsing)
+            )
         }
 
         let barController = UIHostingController(

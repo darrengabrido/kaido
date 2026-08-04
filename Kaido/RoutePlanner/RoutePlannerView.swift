@@ -22,6 +22,7 @@ struct RoutePlannerView: View {
                 Map(viewport: $viewport) {
                     Puck2D(bearing: .course)
                         .bearingImage(BikePuckImage.bearing)
+                        .pulsing(BikePuckImage.pulsing)
 
                     if showBikeLanes {
                         BikeLaneMapLayers()

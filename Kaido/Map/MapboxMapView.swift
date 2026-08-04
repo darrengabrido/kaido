@@ -62,6 +62,7 @@ struct MapboxMapView: View {
                 // puck spin when the phone was still or magnetically noisy on a mount.
                 Puck2D(bearing: .course)
                     .bearingImage(BikePuckImage.bearing)
+                    .pulsing(BikePuckImage.pulsing)
 
                 if showBikeLanes {
                     BikeLaneMapLayers()
