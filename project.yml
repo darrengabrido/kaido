@@ -35,6 +35,14 @@ targets:
       properties:
         UILaunchScreen: {}
         CFBundleDisplayName: Kaido
+        # Without these two spelled out, XcodeGen writes its own literal "1.0"/"1"
+        # into Kaido/Info.plist and the app ships those instead of the versions
+        # declared in `settings.base` below. Xcode expands $(...) in Info.plist at
+        # build time, so naming them here keeps both tracking the build settings.
+        # Deploy to TestFlight still stamps CFBundleVersion with PlistBuddy after
+        # xcodegen runs; that write lands on top of this and is unaffected.
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         MBXAccessToken: "$(MAPBOX_ACCESS_TOKEN)"
         SupabaseHost: "$(SUPABASE_HOST)"
         SupabaseAnonKey: "$(SUPABASE_ANON_KEY)"
@@ -107,5 +115,11 @@ targets:
     deploymentTarget: "26.0"
     sources:
       - path: KaidoTests
+    settings:
+      base:
+        # The test bundle has no Info.plist of its own, and code signing refuses
+        # to run without one. CI never hit this because it builds with
+        # CODE_SIGNING_ALLOWED=NO, but signing is on for local Xcode runs.
+        GENERATE_INFOPLIST_FILE: YES
     dependencies:
       - target: Kaido

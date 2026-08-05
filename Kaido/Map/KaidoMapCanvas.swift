@@ -21,9 +21,6 @@ struct KaidoMapCanvas: View {
             // Course matches travel direction used by follow-puck; heading made the
             // puck spin when the phone was still or magnetically noisy on a mount.
             Puck2D(bearing: .course)
-                .topImage(BikePuckImage.top)
-                .bearingImage(BikePuckImage.bearing)
-                .pulsing(BikePuckImage.pulsing)
 
             if showBikeLanes {
                 BikeLaneMapLayers()

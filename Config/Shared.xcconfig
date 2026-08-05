@@ -3,7 +3,13 @@ SWIFT_VERSION = 5.0
 
 // Local defaults — Secrets.xcconfig may override these (TestFlight CI does).
 CODE_SIGN_STYLE = Automatic
-CODE_SIGN_IDENTITY =
+// A device build has to name an identity. Leaving this empty doesn't mean
+// "let Xcode decide" — it means "don't sign", and the resulting app is refused
+// at install time with "No code signature found". Scoped to the device SDK so
+// simulator builds keep Xcode's ad-hoc "-" and still work on a machine with no
+// certificate. TestFlight CI appends an unscoped CODE_SIGN_IDENTITY to
+// Secrets.xcconfig, which is included below and takes precedence over this.
+CODE_SIGN_IDENTITY[sdk=iphoneos*] = Apple Development
 PROVISIONING_PROFILE_SPECIFIER =
 
 #include "Secrets.xcconfig"

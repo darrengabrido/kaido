@@ -59,6 +59,24 @@ jobs:
       - name: Generate Xcode project
         run: xcodegen generate
 
+      # The build below passes CODE_SIGNING_ALLOWED=NO, so anything that only
+      # breaks once signing runs is invisible to it — a target with no
+      # Info.plist builds fine here and fails the moment someone runs it from
+      # Xcode. Deploy to TestFlight doesn't cover the gap either: it archives
+      # the app target alone and never builds the test bundle. Assert the
+      # setting directly instead, which costs seconds and needs no certificates.
+      - name: Check every target can be code signed
+        run: |
+          for target in $(xcodebuild -project Kaido.xcodeproj -list -json | jq -r '.project.targets[]'); do
+            settings="$(xcodebuild -project Kaido.xcodeproj -target "$target" -showBuildSettings 2>/dev/null)"
+            if grep -qE '^[[:space:]]+(INFOPLIST_FILE = .|GENERATE_INFOPLIST_FILE = YES)' <<<"$settings"; then
+              echo "✓ $target"
+            else
+              echo "::error::Target '$target' has no Info.plist and won't generate one, so code signing it fails. Set GENERATE_INFOPLIST_FILE: YES on the target in project.yml."
+              exit 1
+            fi
+          done
+
       - name: Build
         run: |
           set -o pipefail
