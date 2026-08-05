@@ -21,9 +21,6 @@ struct RoutePlannerView: View {
             ZStack(alignment: .bottom) {
                 Map(viewport: $viewport) {
                     Puck2D(bearing: .course)
-                        .topImage(BikePuckImage.top)
-                        .bearingImage(BikePuckImage.bearing)
-                        .pulsing(BikePuckImage.pulsing)
 
                     if showBikeLanes {
                         BikeLaneMapLayers()
