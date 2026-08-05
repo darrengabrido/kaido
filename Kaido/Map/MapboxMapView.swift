@@ -23,8 +23,9 @@ struct MapboxMapView: View {
     @State private var discoverViewModel = DiscoverViewModel()
     @State private var navigationViewModel = NavigationViewModel()
     @State private var isPresentingNavigation = false
+    /// The drawer's settled height. `ResizableMapDrawer` owns the live drag and writes here
+    /// only once the gesture ends, so dragging never re-evaluates this view's body.
     @State private var placeDetailsCardHeight: CGFloat = 420
-    @GestureState private var placeDetailsDragTranslation: CGFloat = 0
     @FocusState private var isSearchFocused: Bool
 
     // Ride Together
@@ -43,7 +44,7 @@ struct MapboxMapView: View {
 
     private var followBottomPadding: CGFloat {
         // Keep the puck above the drawer chrome with a little breathing room.
-        resolvedPlaceDetailsCardHeight + 16
+        placeDetailsCardHeight + 16
     }
 
     /// Free Ride is explicitly enabled and the map is available for discovery.
@@ -105,7 +106,10 @@ struct MapboxMapView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
             .padding(.trailing, 16)
             .padding(.bottom, 16)
-            .offset(y: -(resolvedPlaceDetailsCardHeight + 8))
+            // Settles with the drawer rather than tracking the finger — the parent deliberately
+            // isn't told the live height, which is what keeps it out of the drag's frame budget.
+            .offset(y: -(placeDetailsCardHeight + 8))
+            .animation(.interactiveSpring(response: 0.38, dampingFraction: 0.86), value: placeDetailsCardHeight)
 
             // With search moved into the drawer, the legend can occupy the top-right corner.
             if showBikeLanes && searchViewModel.results.isEmpty {
@@ -169,6 +173,14 @@ struct MapboxMapView: View {
         }
         .onChange(of: searchViewModel.query) { _, _ in
             searchViewModel.queryDidChange()
+        }
+        // Follow framing depends on drawer height — keep the puck above the chrome. Driven off
+        // the settled height, so it fires once per resize rather than once per frame, and works
+        // for both a drag and a programmatic move.
+        .onChange(of: placeDetailsCardHeight) { _, newHeight in
+            if viewport.followPuck != nil {
+                viewport = MapViewportFollow.live(bottomPadding: newHeight + 16)
+            }
         }
         .onChange(of: isSearchFocused) { _, focused in
             if focused {
@@ -324,35 +336,28 @@ struct MapboxMapView: View {
     }
 
     private var mapDrawer: some View {
-        VStack(spacing: 0) {
+        ResizableMapDrawer(
+            detents: Self.placeDetailsCardDetents,
+            height: $placeDetailsCardHeight
+        ) {
             if let destination = searchViewModel.selectedDestination {
                 placeDetailsSheetHeader(destination)
             } else {
                 mapSearchSheetHeader
             }
-
-            ScrollView {
-                if let destination = searchViewModel.selectedDestination {
-                    placeDetailsContent(destination)
-                        .padding(.horizontal, 18)
-                        .padding(.top, 14)
-                        .padding(.bottom, 18)
-                } else {
-                    mapSearchContent
-                        .padding(.horizontal, 18)
-                        .padding(.top, 14)
-                        .padding(.bottom, 24)
-                }
+        } content: {
+            if let destination = searchViewModel.selectedDestination {
+                placeDetailsContent(destination)
+                    .padding(.horizontal, 18)
+                    .padding(.top, 14)
+                    .padding(.bottom, 18)
+            } else {
+                mapSearchContent
+                    .padding(.horizontal, 18)
+                    .padding(.top, 14)
+                    .padding(.bottom, 24)
             }
-            .scrollIndicators(.hidden)
         }
-        .frame(maxWidth: .infinity)
-        .frame(height: Self.placeDetailsCardDetents.last ?? 560)
-        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 24))
-        .clipShape(RoundedRectangle(cornerRadius: 24))
-        // The drawer's layout never changes during a drag. Only this transform updates, which
-        // keeps Mapbox and the Liquid Glass material out of the per-frame layout path.
-        .offset(y: (Self.placeDetailsCardDetents.last ?? 560) - resolvedPlaceDetailsCardHeight)
     }
 
     private var mapSearchSheetHeader: some View {
@@ -368,8 +373,6 @@ struct MapboxMapView: View {
                 .padding(.horizontal, 18)
         }
         .frame(maxWidth: .infinity)
-        .contentShape(Rectangle())
-        .simultaneousGesture(placeDetailsDragGesture)
     }
 
     private var mapSearchContent: some View {
@@ -719,8 +722,6 @@ struct MapboxMapView: View {
                 .padding(.horizontal, 18)
         }
         .frame(maxWidth: .infinity)
-        .contentShape(Rectangle())
-        .simultaneousGesture(placeDetailsDragGesture)
     }
 
     private var drawerGrabber: some View {
@@ -737,53 +738,18 @@ struct MapboxMapView: View {
             }
     }
 
-    private var resolvedPlaceDetailsCardHeight: CGFloat {
-        rubberBandedPlaceDetailsHeight(placeDetailsCardHeight - placeDetailsDragTranslation)
-    }
-
-    private var placeDetailsDragGesture: some Gesture {
-        DragGesture(minimumDistance: 6)
-            .updating($placeDetailsDragTranslation) { value, state, _ in
-                state = value.translation.height
-            }
-            .onEnded { value in
-                let proposedHeight = placeDetailsCardHeight - value.predictedEndTranslation.height
-                snapPlaceDetailsCard(to: proposedHeight)
-            }
-    }
-
-    private func clampedPlaceDetailsHeight(_ height: CGFloat) -> CGFloat {
-        let minimum = Self.placeDetailsCardDetents.first ?? 190
-        let maximum = Self.placeDetailsCardDetents.last ?? 560
-        return min(max(height, minimum), maximum)
-    }
-
-    private func rubberBandedPlaceDetailsHeight(_ height: CGFloat) -> CGFloat {
-        let minimum = Self.placeDetailsCardDetents.first ?? 190
-        let maximum = Self.placeDetailsCardDetents.last ?? 560
-
-        if height < minimum {
-            return minimum - (minimum - height) * 0.16
-        }
-        if height > maximum {
-            return maximum + (height - maximum) * 0.16
-        }
-        return height
-    }
-
+    /// Moves the drawer programmatically — focusing search, picking a destination. Dragging goes
+    /// through `ResizableMapDrawer` instead, which writes the settled height straight back.
     private func snapPlaceDetailsCard(to proposedHeight: CGFloat) {
-        let clampedHeight = clampedPlaceDetailsHeight(proposedHeight)
+        let minimum = Self.placeDetailsCardDetents.first ?? 190
+        let maximum = Self.placeDetailsCardDetents.last ?? 560
+        let clampedHeight = min(max(proposedHeight, minimum), maximum)
         let nearest = Self.placeDetailsCardDetents.min {
             abs($0 - clampedHeight) < abs($1 - clampedHeight)
         } ?? placeDetailsCardHeight
 
         withAnimation(.interactiveSpring(response: 0.38, dampingFraction: 0.86, blendDuration: 0.18)) {
             placeDetailsCardHeight = nearest
-        }
-        // Follow framing depends on drawer height — keep the puck above chrome.
-        // Set outside the spring so we don't animate followPuck with a non-viewport curve.
-        if viewport.followPuck != nil {
-            viewport = MapViewportFollow.live(bottomPadding: nearest + 16)
         }
     }
 
