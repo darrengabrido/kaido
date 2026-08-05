@@ -23,10 +23,12 @@ struct MapboxMapView: View {
     @State private var discoverViewModel = DiscoverViewModel()
     @State private var navigationViewModel = NavigationViewModel()
     @State private var isPresentingNavigation = false
-    /// The drawer's settled height. `ResizableMapDrawer` owns the live drag and writes here
-    /// only once the gesture ends, so dragging never re-evaluates this view's body.
-    @State private var placeDetailsCardHeight: CGFloat = 420
+    /// Canonical drawer state. Held here so it survives content changes, but this view's body
+    /// never reads `height` or `progress` — only the drawer and the map-control stack do, which
+    /// is what keeps a drag off this view's frame budget.
+    @State private var drawerModel = MapDrawerModel()
     @FocusState private var isSearchFocused: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     // Ride Together
     @State private var isPresentingRideTogetherLobby = false
@@ -36,15 +38,24 @@ struct MapboxMapView: View {
     @State private var rideTogetherErrorMessage: String?
     @State private var isCreatingRideTogether = false
 
-    private static let placeDetailsCardDetents: [CGFloat] = [190, 420, 560]
-
     private var isFollowingUser: Bool {
         viewport.followPuck != nil
     }
 
     private var followBottomPadding: CGFloat {
-        // Keep the puck above the drawer chrome with a little breathing room.
-        placeDetailsCardHeight + 16
+        // Keep the puck above the drawer chrome with a little breathing room. Read from the
+        // resting detent, not the live height, so recentring never fights an in-flight drag.
+        drawerModel.height(for: drawerModel.detent) + 16
+    }
+
+    /// Highly damped so the drawer settles without visible bounce; Reduce Motion swaps it for a
+    /// short transition with no overshoot at all.
+    private var settleAnimation: Animation {
+        reduceMotion ? .easeOut(duration: 0.22) : .spring(response: 0.38, dampingFraction: 0.92)
+    }
+
+    private func settleDrawer(to detent: MapDrawerModel.Detent) {
+        withAnimation(settleAnimation) { drawerModel.settle(to: detent) }
     }
 
     /// Free Ride is explicitly enabled and the map is available for discovery.
@@ -106,10 +117,9 @@ struct MapboxMapView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
             .padding(.trailing, 16)
             .padding(.bottom, 16)
-            // Settles with the drawer rather than tracking the finger — the parent deliberately
-            // isn't told the live height, which is what keeps it out of the drag's frame budget.
-            .offset(y: -(placeDetailsCardHeight + 8))
-            .animation(.interactiveSpring(response: 0.38, dampingFraction: 0.86), value: placeDetailsCardHeight)
+            // Wrapped so only this reads the live drawer position — it rides the drawer
+            // continuously, while this view's body stays out of the per-frame path.
+            .modifier(DrawerCoupledControls(model: drawerModel))
 
             // With search moved into the drawer, the legend can occupy the top-right corner.
             if showBikeLanes && searchViewModel.results.isEmpty {
@@ -119,12 +129,26 @@ struct MapboxMapView: View {
                     .padding(.trailing, 16)
             }
 
+            // Full-bleed: flush to the left, right, and bottom edges in every state, with no
+            // external margins. Rounded corners live on the drawer's own surface.
             mapDrawer
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-                .padding(.horizontal, 12)
-                .padding(.bottom, 8)
                 .zIndex(2)
-
+        }
+        // Detents are derived from the live viewport rather than hard-coded, so the drawer sits
+        // correctly on every device. Bottom inset is zero by design: this screen is inside a
+        // TabView, so the layout is already inset above the tab bar and adding it again would
+        // double-count.
+        .background {
+            GeometryReader { proxy in
+                Color.clear
+                    .onAppear {
+                        drawerModel.updateGeometry(usableHeight: proxy.size.height, bottomSafeArea: 0)
+                    }
+                    .onChange(of: proxy.size.height) { _, height in
+                        drawerModel.updateGeometry(usableHeight: height, bottomSafeArea: 0)
+                    }
+            }
         }
         .onAppear {
             navigationViewModel.updateRideTimeProfile(activeRideTimeProfile)
@@ -174,18 +198,24 @@ struct MapboxMapView: View {
         .onChange(of: searchViewModel.query) { _, _ in
             searchViewModel.queryDidChange()
         }
-        // Follow framing depends on drawer height — keep the puck above the chrome. Driven off
-        // the settled height, so it fires once per resize rather than once per frame, and works
-        // for both a drag and a programmatic move.
-        .onChange(of: placeDetailsCardHeight) { _, newHeight in
+        // Follow framing depends on drawer height — keep the puck above the chrome. Keyed off
+        // the settled detent, so it fires once per resize rather than once per frame.
+        .onChange(of: drawerModel.detent) { _, _ in
             if viewport.followPuck != nil {
-                viewport = MapViewportFollow.live(bottomPadding: newHeight + 16)
+                viewport = MapViewportFollow.live(bottomPadding: followBottomPadding)
             }
         }
+        // Tapping the field expands and opens the keyboard. Dragging to full deliberately does
+        // not focus — expansion and focus are separate intents.
         .onChange(of: isSearchFocused) { _, focused in
-            if focused {
-                snapPlaceDetailsCard(to: Self.placeDetailsCardDetents.last ?? 560)
-            }
+            drawerModel.isSearchFocused = focused
+            // Focus is the only thing that raises the keyboard here, so it tracks focus.
+            drawerModel.isKeyboardVisible = focused
+            if focused { settleDrawer(to: .full) }
+        }
+        .onChange(of: drawerModel.isSearchFocused) { _, focused in
+            // The drawer asks for dismissal on a downward drag; mirror it back to the field.
+            if !focused, isSearchFocused { isSearchFocused = false }
         }
         .fullScreenCover(isPresented: $isPresentingRideTogetherLobby) {
             GroupRideLobbyView(
@@ -246,14 +276,17 @@ struct MapboxMapView: View {
                 } label: {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundStyle(.secondary)
-                        .frame(width: 32, height: 32)
+                        .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Clear search")
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .padding(.leading, 14)
+        // Trailing inset is smaller because the clear button carries its own 44pt target.
+        .padding(.trailing, searchViewModel.query.isEmpty ? 14 : 2)
+        .frame(minHeight: 48)
         .background(Color.kaidoInk.opacity(0.08), in: RoundedRectangle(cornerRadius: 16))
         .overlay {
             RoundedRectangle(cornerRadius: 16)
@@ -337,8 +370,8 @@ struct MapboxMapView: View {
 
     private var mapDrawer: some View {
         ResizableMapDrawer(
-            detents: Self.placeDetailsCardDetents,
-            height: $placeDetailsCardHeight
+            model: drawerModel,
+            onSettle: { settleDrawer(to: $0) }
         ) {
             if let destination = searchViewModel.selectedDestination {
                 placeDetailsSheetHeader(destination)
@@ -360,6 +393,8 @@ struct MapboxMapView: View {
         }
     }
 
+    /// Identical geometry in every state — it translates with the drawer rather than becoming a
+    /// different component. No divider beneath it: the glass edge already separates it.
     private var mapSearchSheetHeader: some View {
         VStack(spacing: 0) {
             drawerGrabber
@@ -367,10 +402,6 @@ struct MapboxMapView: View {
             searchBar
                 .padding(.horizontal, 18)
                 .padding(.bottom, 14)
-
-            Divider()
-                .overlay(Color.kaidoInk.opacity(0.12))
-                .padding(.horizontal, 18)
         }
         .frame(maxWidth: .infinity)
     }
@@ -417,8 +448,7 @@ struct MapboxMapView: View {
 
     private var savedPlacesSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Places")
-                .font(.title3.weight(.semibold))
+            sectionHeading("Places")
 
             ScrollView(.horizontal) {
                 HStack(alignment: .top, spacing: 12) {
@@ -488,68 +518,99 @@ struct MapboxMapView: View {
         .buttonStyle(.plain)
     }
 
-    private var recentsSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Recents")
+    /// Section headings carry a disclosure chevron so they read as openable groups.
+    private func sectionHeading(_ title: String) -> some View {
+        HStack(spacing: 4) {
+            Text(title)
                 .font(.title3.weight(.semibold))
+            Image(systemName: "chevron.right")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Color.kaidoDim)
+            Spacer(minLength: 0)
+        }
+        .accessibilityElement(children: .combine)
+    }
 
-            ForEach(Array(recentPlaces.prefix(8))) { place in
-                HStack(spacing: 8) {
-                    Button {
-                        selectDestination(place.searchResult)
-                    } label: {
-                        HStack(spacing: 12) {
-                            Image(systemName: place.isHome ? "house.fill" : place.iconName)
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundStyle(Color.kaidoInk)
-                                .frame(width: 34, height: 34)
-                                .background(Color.kaidoInk.opacity(0.08), in: Circle())
+    /// One rounded glass group holding every recent, rather than a stack of separate cards, with
+    /// inset dividers between rows.
+    private var recentsSection: some View {
+        let places = Array(recentPlaces.prefix(8))
+        return VStack(alignment: .leading, spacing: 10) {
+            sectionHeading("Recents")
 
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(place.name)
-                                    .font(.subheadline.weight(.medium))
-                                    .foregroundStyle(.primary)
-                                    .lineLimit(1)
-                                Text(place.address)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                            }
+            VStack(spacing: 0) {
+                ForEach(Array(places.enumerated()), id: \.element.id) { index, place in
+                    recentRow(place)
 
-                            Spacer(minLength: 0)
-                        }
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-
-                    Menu {
-                        if !place.isFavorite {
-                            Button {
-                                place.isFavorite = true
-                                savePlaces()
-                            } label: {
-                                Label("Add to Favorites", systemImage: "star")
-                            }
-                        }
-
-                        Button(role: .destructive) {
-                            removeFromRecents(place)
-                        } label: {
-                            Label("Remove from Recents", systemImage: "trash")
-                        }
-                    } label: {
-                        Image(systemName: "ellipsis")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(Color.kaidoDim)
-                            .frame(width: 34, height: 34)
-                            .contentShape(Circle())
+                    if index < places.count - 1 {
+                        Divider()
+                            .overlay(Color.kaidoInk.opacity(0.10))
+                            // Inset so the rule starts past the leading icon.
+                            .padding(.leading, 58)
                     }
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 9)
-                .background(Color.kaidoInk.opacity(0.045), in: RoundedRectangle(cornerRadius: 14))
             }
+            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 16))
+            .clipShape(RoundedRectangle(cornerRadius: 16))
         }
+    }
+
+    private func recentRow(_ place: SavedPlace) -> some View {
+        HStack(spacing: 8) {
+            Button {
+                selectDestination(place.searchResult)
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: place.isHome ? "house.fill" : place.iconName)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Color.kaidoInk)
+                        .frame(width: 34, height: 34)
+                        .background(Color.kaidoInk.opacity(0.08), in: Circle())
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(place.name)
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                        Text(place.address)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+
+                    Spacer(minLength: 0)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            Menu {
+                if !place.isFavorite {
+                    Button {
+                        place.isFavorite = true
+                        savePlaces()
+                    } label: {
+                        Label("Add to Favorites", systemImage: "star")
+                    }
+                }
+
+                Button(role: .destructive) {
+                    removeFromRecents(place)
+                } label: {
+                    Label("Remove from Recents", systemImage: "trash")
+                }
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Color.kaidoDim)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Circle())
+            }
+            .accessibilityLabel("More options for \(place.name)")
+        }
+        .padding(.leading, 12)
+        .padding(.trailing, 4)
+        .padding(.vertical, 9)
     }
 
     private func placeDetailsContent(_ destination: SearchResult) -> some View {
@@ -716,10 +777,6 @@ struct MapboxMapView: View {
             destinationHeader(destination)
                 .padding(.horizontal, 18)
                 .padding(.bottom, 14)
-
-            Divider()
-                .overlay(Color.kaidoInk.opacity(0.12))
-                .padding(.horizontal, 18)
         }
         .frame(maxWidth: .infinity)
     }
@@ -732,58 +789,12 @@ struct MapboxMapView: View {
             .padding(.bottom, 10)
             .accessibilityElement()
             .accessibilityLabel("Resize map drawer")
-            .accessibilityValue(placeDetailsSizeLabel)
+            .accessibilityValue(drawerModel.detent.accessibilityName)
             .accessibilityAdjustableAction { direction in
-                adjustPlaceDetailsSize(direction)
+                if let next = drawerModel.step(direction) {
+                    settleDrawer(to: next)
+                }
             }
-    }
-
-    /// Moves the drawer programmatically — focusing search, picking a destination. Dragging goes
-    /// through `ResizableMapDrawer` instead, which writes the settled height straight back.
-    private func snapPlaceDetailsCard(to proposedHeight: CGFloat) {
-        let minimum = Self.placeDetailsCardDetents.first ?? 190
-        let maximum = Self.placeDetailsCardDetents.last ?? 560
-        let clampedHeight = min(max(proposedHeight, minimum), maximum)
-        let nearest = Self.placeDetailsCardDetents.min {
-            abs($0 - clampedHeight) < abs($1 - clampedHeight)
-        } ?? placeDetailsCardHeight
-
-        withAnimation(.interactiveSpring(response: 0.38, dampingFraction: 0.86, blendDuration: 0.18)) {
-            placeDetailsCardHeight = nearest
-        }
-    }
-
-    private var placeDetailsSizeLabel: String {
-        switch placeDetailsCardHeight {
-        case ..<305: "Compact"
-        case ..<490: "Medium"
-        default: "Expanded"
-        }
-    }
-
-    private func adjustPlaceDetailsSize(_ direction: AccessibilityAdjustmentDirection) {
-        guard let currentIndex = Self.placeDetailsCardDetents.firstIndex(of: placeDetailsCardHeight) else {
-            snapPlaceDetailsCard(to: placeDetailsCardHeight)
-            return
-        }
-
-        let nextIndex: Int
-        switch direction {
-        case .increment:
-            nextIndex = min(currentIndex + 1, Self.placeDetailsCardDetents.count - 1)
-        case .decrement:
-            nextIndex = max(currentIndex - 1, 0)
-        @unknown default:
-            return
-        }
-
-        let nextHeight = Self.placeDetailsCardDetents[nextIndex]
-        withAnimation(.interactiveSpring(response: 0.38, dampingFraction: 0.86, blendDuration: 0.18)) {
-            placeDetailsCardHeight = nextHeight
-        }
-        if viewport.followPuck != nil {
-            viewport = MapViewportFollow.live(bottomPadding: nextHeight + 16)
-        }
     }
 
     private func destinationHeader(_ destination: SearchResult) -> some View {
@@ -1023,7 +1034,7 @@ struct MapboxMapView: View {
         searchViewModel.selectResult(result)
         navigationViewModel.clear()
         isSearchFocused = false
-        snapPlaceDetailsCard(to: 420)
+        settleDrawer(to: .medium)
         withViewportAnimation(.default(maxDuration: 1)) {
             viewport = .camera(center: result.coordinate, zoom: 15)
                 .padding(.bottom, followBottomPadding)
@@ -1102,7 +1113,7 @@ struct MapboxMapView: View {
     private func clearDestination() {
         searchViewModel.clearSelection()
         navigationViewModel.clear()
-        snapPlaceDetailsCard(to: 420)
+        settleDrawer(to: .medium)
         MapViewportFollow.recenter($viewport, bottomPadding: followBottomPadding)
     }
 
