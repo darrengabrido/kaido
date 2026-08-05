@@ -337,6 +337,18 @@ jobs:
           BUNDLE_VERSION="$(cat "$RUNNER_TEMP/bundle-version.txt")"
           echo "Uploading $BUNDLE_ID $SHORT_VERSION ($BUNDLE_VERSION) → Apple ID $ASC_APP_APPLE_ID"
 
+          # Spotify connect failures reported from the field could be this build's Info.plist
+          # never getting a real value substituted for $(SPOTIFY_CLIENT_ID) — the same class of
+          # XcodeGen/Info.plist bug that once hardcoded CFBundleVersion (see "Generate Xcode
+          # project" above). Check the archived binary itself, not just the source Info.plist,
+          # since that's the only copy that's actually authoritative.
+          RESOLVED_SPOTIFY_CLIENT_ID="$(/usr/libexec/PlistBuddy -c 'Print :SpotifyClientID' "$INFO_PLIST" 2>/dev/null || echo '<missing key>')"
+          if [[ -z "$RESOLVED_SPOTIFY_CLIENT_ID" || "$RESOLVED_SPOTIFY_CLIENT_ID" == '$(SPOTIFY_CLIENT_ID)' || "$RESOLVED_SPOTIFY_CLIENT_ID" == "<missing key>" ]]; then
+            echo "::warning::Archived Info.plist's SpotifyClientID is '$RESOLVED_SPOTIFY_CLIENT_ID' — the SPOTIFY_CLIENT_ID secret never made it into this build. Spotify Connect will fail. Check the SPOTIFY_CLIENT_ID repository/environment secret."
+          else
+            echo "Archived Info.plist SpotifyClientID resolved (${#RESOLVED_SPOTIFY_CLIENT_ID} chars, starts with ${RESOLVED_SPOTIFY_CLIENT_ID:0:4}…)"
+          fi
+
           # Xcode 26 altool prefers --upload-package with explicit app identity.
           # Legacy --upload-app looks up the Apple ID from the bundle ID and 401s
           # when that lookup fails — even if the .p8 itself is valid.
