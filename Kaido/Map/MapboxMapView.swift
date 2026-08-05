@@ -57,57 +57,12 @@ struct MapboxMapView: View {
 
     var body: some View {
         ZStack(alignment: .top) {
-            Map(viewport: $viewport) {
-                // Course matches travel direction used by follow-puck; heading made the
-                // puck spin when the phone was still or magnetically noisy on a mount.
-                Puck2D(bearing: .course)
-                    .bearingImage(BikePuckImage.bearing)
-                    .pulsing(BikePuckImage.pulsing)
-
-                if showBikeLanes {
-                    BikeLaneMapLayers()
-                }
-
-                if let destination = searchViewModel.selectedDestination {
-                    CircleAnnotationGroup([destination]) { result in
-                        CircleAnnotation(centerCoordinate: result.coordinate)
-                            // The destination pin is the one marker that must not recede into the
-                            // neutrals — clay reads warm against the violet route and sage lanes.
-                            .circleColor(UIColor(Color.statusCritical))
-                            .circleRadius(8)
-                            .circleStrokeColor(.white)
-                            .circleStrokeWidth(2)
-                    }
-                    .circleEmissiveStrength(1)
-                }
-
-                // Draw alternates first. Their distinct colours keep choices legible, while a
-                // narrow, translucent stroke makes the selected violet route the visual focus.
-                PolylineAnnotationGroup(
-                    navigationViewModel.routeOptions.filter { !$0.isMain && $0.coordinates.count > 1 }
-                ) { option in
-                    PolylineAnnotation(lineCoordinates: option.coordinates)
-                        .lineColor(UIColor(routeColor(for: option)))
-                        .lineWidth(2.5)
-                }
-                .lineOpacity(0.38)
-                .lineEmissiveStrength(0.6)
-
-                if let mainRoute = navigationViewModel.routeOptions.first(where: { $0.isMain && $0.coordinates.count > 1 }) {
-                    RouteGlowPolyline(coordinates: mainRoute.coordinates)
-                }
-            }
-            .mapStyle(.kaidoNight)
-            .ornamentOptions(OrnamentOptions(
-                scaleBar: ScaleBarViewOptions(visibility: .hidden),
-                // Search and saved places live in the bottom drawer, leaving the map's top edge
-                // available for ornaments.
-                compass: CompassViewOptions(
-                    position: .topLeading,
-                    margins: CGPoint(x: 16, y: 16)
-                )
-            ))
-            .ignoresSafeArea()
+            KaidoMapCanvas(
+                viewport: $viewport,
+                showBikeLanes: showBikeLanes,
+                selectedDestination: searchViewModel.selectedDestination,
+                routeOptions: navigationViewModel.routeOptions
+            )
 
             // Recenter sits above the cycling menu so riders can recover follow after a pan.
             VStack(spacing: 10) {
@@ -990,7 +945,7 @@ struct MapboxMapView: View {
                         } label: {
                             HStack(alignment: .top, spacing: 10) {
                                 Circle()
-                                    .fill(routeColor(for: option))
+                                    .fill(Self.routeColor(for: option, in: navigationViewModel.routeOptions))
                                     .frame(width: 8, height: 8)
                                     .padding(.top, 7)
 
@@ -1061,9 +1016,12 @@ struct MapboxMapView: View {
 
     /// Violet remains the active route. Mapbox returns up to two cycling alternatives, which
     /// receive blue and coral respectively — deliberately distinct from mint bike lanes.
-    private func routeColor(for option: RouteOption) -> Color {
+    ///
+    /// Static so `KaidoMapCanvas` (a separate view, so the map isn't rebuilt on every search
+    /// drawer drag frame) can share this without needing a reference back to this view.
+    static func routeColor(for option: RouteOption, in routeOptions: [RouteOption]) -> Color {
         guard !option.isMain else { return .kaidoViolet }
-        let alternateIndex = navigationViewModel.routeOptions
+        let alternateIndex = routeOptions
             .filter { !$0.isMain }
             .firstIndex { $0.id == option.id } ?? 0
 
