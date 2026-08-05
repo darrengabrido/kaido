@@ -54,25 +54,45 @@ docs/                Feature docs (Ride Together architecture, setup, testing ch
 ### Prerequisites
 
 - Xcode 26+
-- [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`)
-- A [Mapbox](https://www.mapbox.com/) account and public access token
+- [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`) — the setup script installs it for you if it's missing
+- A [Mapbox](https://www.mapbox.com/) account, with **two** tokens (see below)
 - Optional: a [Supabase](https://supabase.com/) project, if you want sign-in enabled
 
 ### Setup
 
-1. Clone the repo.
-2. Copy the secrets template and fill it in:
-   ```
-   cp Config/Secrets.xcconfig.example Config/Secrets.xcconfig
-   ```
-   Set `DEVELOPMENT_TEAM` to your 10-character Apple Team ID and add your Mapbox token. Supabase credentials are optional — leave them blank and the app still builds and runs, with sign-in disabled and guest mode always available. An OpenAI API key is also optional — without it, free-ride discover still works using nearby Mapbox POIs and built-in suggestion heuristics.
-3. Generate the Xcode project:
-   ```
-   xcodegen generate
-   ```
-4. Open `Kaido.xcodeproj` and run.
+After cloning, run:
 
-To regenerate the project after changing `project.yml` (targets, permissions, entitlements, etc.), just re-run `xcodegen generate`.
+```
+scripts/setup.sh
+```
+
+It checks Xcode and XcodeGen, creates `Config/Secrets.xcconfig` from the template and prompts for each value, adds the Mapbox download credential to `~/.netrc`, generates `Kaido.xcodeproj`, and resolves the Swift packages. Then `open Kaido.xcodeproj` and run.
+
+The script is safe to re-run: values already filled in are left alone. Pass `--reconfigure` to change them, `--skip-resolve` to leave package resolution to Xcode, or `--non-interactive` to take every answer from the environment instead of prompting. `scripts/setup.sh --help` lists all options.
+
+Two Mapbox tokens are involved and they are **not** interchangeable:
+
+| Token | Where it goes | Why |
+| --- | --- | --- |
+| Public `pk.` access token | `MAPBOX_ACCESS_TOKEN` in `Config/Secrets.xcconfig` | Used by the app at runtime to load maps, search, and directions |
+| Secret `sk.` token with the `DOWNLOADS:READ` scope | `~/.netrc` | Mapbox ships its SDKs as binary Swift packages behind an authenticated download, so this is needed just to compile — without it, package resolution fails with a 403 |
+
+Supabase credentials are optional — leave them blank and the app still builds and runs, with sign-in disabled and guest mode always available. An OpenAI API key is also optional — without it, free-ride discover still works using nearby Mapbox POIs and built-in suggestion heuristics. A Spotify client ID is optional too; without it the media bar simply won't connect.
+
+To regenerate the project after changing `project.yml` (targets, permissions, entitlements, etc.), re-run `xcodegen generate` — or `scripts/setup.sh`, which does that and re-resolves packages.
+
+<details>
+<summary>Doing it by hand instead</summary>
+
+```
+cp Config/Secrets.xcconfig.example Config/Secrets.xcconfig   # then fill it in
+printf 'machine api.mapbox.com\nlogin mapbox\npassword sk.YOUR_DOWNLOADS_TOKEN\n' >> ~/.netrc
+chmod 600 ~/.netrc
+xcodegen generate
+```
+
+`SUPABASE_HOST` must be the bare host with no `https://` prefix — xcconfig treats `//` as a comment marker and would silently truncate the value.
+</details>
 
 ### Continuous integration
 
