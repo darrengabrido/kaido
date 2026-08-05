@@ -28,6 +28,11 @@ struct MapboxMapView: View {
     /// is what keeps a drag off this view's frame budget.
     @State private var drawerModel = MapDrawerModel()
     @FocusState private var isSearchFocused: Bool
+    /// Same recogniser Ride Together dictation uses — the mic only appears when it can actually
+    /// record, so the control is never decorative.
+    @State private var speechService = SpeechQuickMessageService()
+    @State private var speechErrorMessage: String?
+    @State private var isPresentingProfile = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     // Ride Together
@@ -198,6 +203,12 @@ struct MapboxMapView: View {
         .onChange(of: searchViewModel.query) { _, _ in
             searchViewModel.queryDidChange()
         }
+        // Live dictation streams straight into the query, so debounce, suggestions, and results
+        // behave exactly as they do for typing.
+        .onChange(of: speechService.liveTranscript) { _, transcript in
+            guard speechService.isRecording else { return }
+            searchViewModel.query = transcript
+        }
         // Follow framing depends on drawer height — keep the puck above the chrome. Keyed off
         // the settled detent, so it fires once per resize rather than once per frame.
         .onChange(of: drawerModel.detent) { _, _ in
@@ -282,10 +293,23 @@ struct MapboxMapView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("Clear search")
             }
+
+            if isDictationAvailable {
+                Button(action: toggleDictation) {
+                    Image(systemName: speechService.isRecording ? "mic.fill" : "mic")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundStyle(speechService.isRecording ? Color.statusCritical : Color.kaidoDim)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(speechService.isRecording ? "Stop dictation" : "Dictate a destination")
+            }
         }
         .padding(.leading, 14)
-        // Trailing inset is smaller because the clear button carries its own 44pt target.
-        .padding(.trailing, searchViewModel.query.isEmpty ? 14 : 2)
+        // Trailing inset shrinks when a trailing control is present, since those carry their
+        // own 44pt targets and would otherwise sit too far inboard.
+        .padding(.trailing, (isDictationAvailable || !searchViewModel.query.isEmpty) ? 2 : 14)
         .frame(minHeight: 48)
         .background(Color.kaidoInk.opacity(0.08), in: RoundedRectangle(cornerRadius: 16))
         .overlay {
@@ -391,6 +415,11 @@ struct MapboxMapView: View {
                     .padding(.bottom, 24)
             }
         }
+        // Attached to the drawer rather than to the screen's ZStack, whose one sheet slot
+        // already belongs to the Ride Together display-name prompt.
+        .sheet(isPresented: $isPresentingProfile) {
+            NavigationStack { ProfileView() }
+        }
     }
 
     /// Identical geometry in every state — it translates with the drawer rather than becoming a
@@ -399,11 +428,34 @@ struct MapboxMapView: View {
         VStack(spacing: 0) {
             drawerGrabber
 
-            searchBar
-                .padding(.horizontal, 18)
-                .padding(.bottom, 14)
+            HStack(spacing: 10) {
+                searchBar
+                profileButton
+            }
+            .padding(.horizontal, 18)
+            .padding(.bottom, 14)
         }
         .frame(maxWidth: .infinity)
+    }
+
+    /// Opens the existing account screen. Presented from the drawer rather than this view
+    /// because the ZStack's one sheet slot is taken by the display-name prompt.
+    private var profileButton: some View {
+        Button {
+            isPresentingProfile = true
+        } label: {
+            Image(systemName: "person.fill")
+                .font(.system(size: 17, weight: .medium))
+                .foregroundStyle(Color.kaidoInk)
+                .frame(width: 48, height: 48)
+                .background(Color.kaidoInk.opacity(0.08), in: Circle())
+                .overlay {
+                    Circle().stroke(Color.kaidoInk.opacity(0.08), lineWidth: 1)
+                }
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Profile")
     }
 
     private var mapSearchContent: some View {
@@ -418,8 +470,8 @@ struct MapboxMapView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             } else if !searchViewModel.results.isEmpty {
                 resultsList
-            } else if let searchError = searchViewModel.searchError {
-                Text(searchError)
+            } else if let message = speechErrorMessage ?? searchViewModel.searchError {
+                Text(message)
                     .font(.caption)
                     .foregroundStyle(Color.statusCritical)
                     .padding(10)
@@ -516,6 +568,52 @@ struct MapboxMapView: View {
             .frame(width: 82)
         }
         .buttonStyle(.plain)
+    }
+
+    /// Shown only when the recogniser could actually run. A permanently dead mic would be
+    /// exactly the decorative control the brief ruled out.
+    private var isDictationAvailable: Bool {
+        switch speechService.availability {
+        case .available, .permissionNotDetermined: true
+        case .permissionDenied, .restricted, .recognizerUnavailable: false
+        }
+    }
+
+    /// Dictates into the existing search field — the transcript is just text, so debouncing,
+    /// suggestions, and results all keep working unchanged.
+    private func toggleDictation() {
+        speechErrorMessage = nil
+
+        if speechService.isRecording {
+            let transcript = speechService.stopRecording()
+            RideAudioCoordinator.shared.endSpeechCapture()
+            let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty {
+                speechErrorMessage = SpeechQuickMessageError.emptyTranscript.localizedDescription
+            } else {
+                searchViewModel.query = trimmed
+            }
+            return
+        }
+
+        Task {
+            if speechService.availability == .permissionNotDetermined {
+                guard await speechService.requestPermission() else { return }
+            }
+            guard speechService.availability == .available else {
+                speechErrorMessage = SpeechQuickMessageError.recognizerUnavailable.localizedDescription
+                return
+            }
+            do {
+                try RideAudioCoordinator.shared.beginSpeechCapture()
+                try speechService.startRecording()
+                // Dictating implies searching — bring the drawer up so results have room.
+                settleDrawer(to: .full)
+            } catch {
+                RideAudioCoordinator.shared.endSpeechCapture()
+                speechErrorMessage = SpeechQuickMessageError.recognizerUnavailable.localizedDescription
+            }
+        }
     }
 
     /// Section headings carry a disclosure chevron so they read as openable groups.
