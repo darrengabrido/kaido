@@ -11,29 +11,31 @@ import UIKit
 /// the built-in puck for a hand-built annotation (losing its GPS smoothing and accuracy handling
 /// in the process). One rotating image is the same tradeoff the previous bicycle glyph already
 /// made, so this isn't a new limitation.
+///
+/// The glyph is a bold single-tone silhouette, not delicate multi-part line art — a real puck on
+/// a phone screen renders at a few dozen points, and thin multi-color strokes that read fine in
+/// a large preview mockup blur into a smudge at that size. Bold shapes survive the trip down.
 enum BikePuckImage {
     static let bearing: UIImage? = makeBearingImage()
 
     /// Sonar-style pulse ring around the puck. Mapbox animates this natively — this only
     /// recolors and resizes it to match the accent used everywhere else on the map.
     static var pulsing: Puck2DConfiguration.Pulsing {
-        Puck2DConfiguration.Pulsing(color: UIColor(Color.kaidoVioletOnMap), radius: .constant(26))
+        Puck2DConfiguration.Pulsing(color: UIColor(Color.kaidoVioletOnMap), radius: .constant(22))
     }
 
     private static func makeBearingImage() -> UIImage? {
         let violetOnMap = UIColor(Color.kaidoVioletOnMap)
         let midnight = UIColor(Color.kaidoMidnight)
         let bmxYellow = UIColor(red: 0xF3 / 255, green: 0xB2 / 255, blue: 0x3A / 255, alpha: 1)
-        let chrome = UIColor(red: 0xD7 / 255, green: 0xDB / 255, blue: 0xE2 / 255, alpha: 1)
-        let tireDark = UIColor(red: 0x17 / 255, green: 0x17 / 255, blue: 0x1B / 255, alpha: 1)
 
-        let size = CGSize(width: 72, height: 72)
+        let size = CGSize(width: 56, height: 56)
         let format = UIGraphicsImageRendererFormat()
         format.scale = 3
         format.opaque = false
         let renderer = UIGraphicsImageRenderer(size: size, format: format)
         let center = CGPoint(x: size.width / 2, y: size.height / 2)
-        let discRadius: CGFloat = 15
+        let discRadius: CGFloat = 12
 
         return renderer.image { context in
             let cg = context.cgContext
@@ -52,23 +54,24 @@ enum BikePuckImage {
             cg.addEllipse(in: discRect)
             cg.drawPath(using: .fillStroke)
 
-            drawBmxGlyph(in: cg, center: center, bmxYellow: bmxYellow, chrome: chrome, tireDark: tireDark)
+            drawBmxGlyph(in: cg, center: center, color: bmxYellow)
         }
     }
 
     /// A cone that's brightest near the puck and fades to nothing at its tip — reads as "this
-    /// way" once the puck is rotated to match the rider's course.
+    /// way" once the puck is rotated to match the rider's course. Kept fully inside the canvas
+    /// (tip margin below `center.y - size/2`) so the point never clips off.
     private static func drawHeadingWedge(in cg: CGContext, center: CGPoint, discRadius: CGFloat, color: UIColor) {
-        let tip = CGPoint(x: center.x, y: center.y - discRadius - 22)
-        let baseHalfWidth: CGFloat = 12
-        let baseY = center.y - discRadius + 4
+        let tip = CGPoint(x: center.x, y: center.y - discRadius - 11)
+        let baseHalfWidth: CGFloat = 8
+        let baseY = center.y - discRadius + 2
 
         let wedge = CGMutablePath()
         wedge.move(to: tip)
         wedge.addLine(to: CGPoint(x: center.x - baseHalfWidth, y: baseY))
         wedge.addQuadCurve(
             to: CGPoint(x: center.x + baseHalfWidth, y: baseY),
-            control: CGPoint(x: center.x, y: baseY + 6)
+            control: CGPoint(x: center.x, y: baseY + 5)
         )
         wedge.closeSubpath()
 
@@ -88,31 +91,25 @@ enum BikePuckImage {
         cg.restoreGState()
     }
 
-    /// A side-view BMX in miniature: two wheels, a diamond frame, cockpit, seat, and chainring —
-    /// styled after a real childhood bike rather than a generic bicycle icon.
-    private static func drawBmxGlyph(
-        in cg: CGContext,
-        center: CGPoint,
-        bmxYellow: UIColor,
-        chrome: UIColor,
-        tireDark: UIColor
-    ) {
+    /// A side-view BMX reduced to its essential silhouette: two bold wheel rings, a solid frame
+    /// triangle, and single strokes for the stays, fork, bar, and seat — one tone throughout.
+    private static func drawBmxGlyph(in cg: CGContext, center: CGPoint, color: UIColor) {
         func point(_ x: CGFloat, _ y: CGFloat) -> CGPoint {
             CGPoint(x: center.x + x, y: center.y + y)
         }
 
-        let wheelRadius: CGFloat = 4.7
-        let rimRadius: CGFloat = 3.25
-        let rear = point(-7.8, 3.6)
-        let front = point(7.8, 3.6)
-        let bottomBracket = point(-0.65, 4.2)
-        let headTop = point(6.8, -4.4)
-        let seatTop = point(-6.0, -4.7)
-        let barLeft = point(2.9, -7.0)
-        let barRight = point(10.7, -7.0)
-        let barCenter = CGPoint(x: (barLeft.x + barRight.x) / 2, y: barLeft.y)
+        let wheelRadius: CGFloat = 4.2
+        let rear = point(-6.2, 2.6)
+        let front = point(6.2, 2.6)
+        let bottomBracket = point(0, 2.8)
+        let headTop = point(4.6, -3.2)
+        let seatTop = point(-4.6, -3.0)
 
-        cg.setStrokeColor(tireDark.cgColor)
+        cg.setStrokeColor(color.cgColor)
+        cg.setFillColor(color.cgColor)
+        cg.setLineCap(.round)
+        cg.setLineJoin(.round)
+
         cg.setLineWidth(2.6)
         for hub in [rear, front] {
             cg.addEllipse(in: CGRect(
@@ -122,49 +119,34 @@ enum BikePuckImage {
         }
         cg.strokePath()
 
-        cg.setFillColor(chrome.cgColor)
-        for hub in [rear, front] {
-            cg.addEllipse(in: CGRect(
-                x: hub.x - rimRadius, y: hub.y - rimRadius,
-                width: rimRadius * 2, height: rimRadius * 2
-            ))
-        }
+        let frame = CGMutablePath()
+        frame.move(to: seatTop)
+        frame.addLine(to: headTop)
+        frame.addLine(to: bottomBracket)
+        frame.closeSubpath()
+        cg.addPath(frame)
         cg.fillPath()
 
-        let frame = CGMutablePath()
-        frame.move(to: seatTop); frame.addLine(to: headTop) // top tube
-        frame.move(to: headTop); frame.addLine(to: bottomBracket) // down tube
-        frame.move(to: seatTop); frame.addLine(to: bottomBracket) // seat tube
-        frame.move(to: bottomBracket); frame.addLine(to: rear) // chain stay
-        frame.move(to: seatTop); frame.addLine(to: rear) // seat stay
-        cg.setStrokeColor(bmxYellow.cgColor)
-        cg.setLineWidth(2.2)
-        cg.setLineCap(.round)
-        cg.setLineJoin(.round)
-        cg.addPath(frame)
+        let stays = CGMutablePath()
+        stays.move(to: bottomBracket); stays.addLine(to: rear) // chain stay
+        stays.move(to: seatTop); stays.addLine(to: rear) // seat stay
+        stays.move(to: headTop); stays.addLine(to: front) // fork
+        cg.setLineWidth(2.4)
+        cg.addPath(stays)
         cg.strokePath()
 
         let cockpit = CGMutablePath()
-        cockpit.move(to: headTop); cockpit.addLine(to: front) // fork
-        cockpit.move(to: headTop); cockpit.addLine(to: barCenter) // stem
-        cockpit.move(to: barLeft); cockpit.addLine(to: barRight) // handlebar
-        cg.setStrokeColor(chrome.cgColor)
-        cg.setLineWidth(1.8)
+        cockpit.move(to: CGPoint(x: headTop.x - 2.2, y: headTop.y - 2.6))
+        cockpit.addLine(to: CGPoint(x: headTop.x + 2.6, y: headTop.y - 2.6)) // handlebar
+        cockpit.move(to: headTop)
+        cockpit.addLine(to: CGPoint(x: headTop.x, y: headTop.y - 2.6)) // stem
+        cg.setLineWidth(2.6)
         cg.addPath(cockpit)
         cg.strokePath()
 
-        cg.setStrokeColor(tireDark.cgColor)
         cg.setLineWidth(3)
-        cg.setLineCap(.round)
-        cg.move(to: CGPoint(x: seatTop.x - 1.6, y: seatTop.y))
-        cg.addLine(to: CGPoint(x: seatTop.x + 1.6, y: seatTop.y))
+        cg.move(to: CGPoint(x: seatTop.x - 1.6, y: seatTop.y - 1.4))
+        cg.addLine(to: CGPoint(x: seatTop.x + 1.2, y: seatTop.y - 1.4)) // seat
         cg.strokePath()
-
-        cg.setFillColor(chrome.cgColor)
-        cg.addEllipse(in: CGRect(
-            x: bottomBracket.x - 1.6, y: bottomBracket.y - 1.6,
-            width: 3.2, height: 3.2
-        ))
-        cg.fillPath()
     }
 }
