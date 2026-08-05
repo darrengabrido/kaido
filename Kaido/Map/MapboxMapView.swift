@@ -550,7 +550,15 @@ struct MapboxMapView: View {
                     }
                 }
             }
-            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 16))
+            // A lighter nested treatment rather than a second glass surface. Real glass here
+            // would mean blurring on top of the drawer's own blur, and this group translates
+            // with every frame of a drag — blur-on-blur under motion is the single most
+            // expensive thing on this screen.
+            .background(Color.kaidoInk.opacity(0.06), in: RoundedRectangle(cornerRadius: 16))
+            .overlay {
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(Color.kaidoInk.opacity(0.08), lineWidth: 1)
+            }
             .clipShape(RoundedRectangle(cornerRadius: 16))
         }
     }

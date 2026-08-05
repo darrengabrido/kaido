@@ -51,7 +51,10 @@ struct ResizableMapDrawer<Header: View, Content: View>: View {
         .frame(height: model.fullHeight, alignment: .top)
         .background(surface)
         .clipShape(surfaceShape)
-        .shadow(color: .black.opacity(0.18 + 0.12 * model.progress), radius: 18 * (0.5 + model.progress), y: -2)
+        // Radius is fixed on purpose. Animating a shadow's radius re-renders the blur every
+        // frame, which is one of the most expensive things you can do during a drag; only the
+        // opacity varies, and that composites on the GPU for free.
+        .shadow(color: .black.opacity(0.22), radius: 16, y: -2)
         .offset(y: max(model.fullHeight - model.height, 0))
     }
 
@@ -149,48 +152,51 @@ struct ResizableMapDrawer<Header: View, Content: View>: View {
 
     // MARK: Surface
 
-    /// One primary glass surface. Tint and edge highlight strengthen with expansion so text
-    /// stays readable as the drawer covers more map, without stacking extra blur layers.
+    /// One primary glass surface, with the scrim and edge highlight layered over it.
+    ///
+    /// Every layer here is painted with *constant* colours and varied only through `.opacity`.
+    /// That distinction is the whole performance story: changing the alpha inside a fill or
+    /// gradient is a new paint, so the layer re-rasterises on every frame of a drag — over
+    /// Liquid Glass, that is ruinous. `.opacity` on an already-rendered layer is a GPU
+    /// composite, so the same visual result costs nothing to animate.
     @ViewBuilder
     private var surface: some View {
-        let progress = model.progress
-
         if reduceTransparency {
             surfaceShape.fill(Color.kaidoMidnight.opacity(0.97))
         } else {
-            surfaceShape
-                .fill(.clear)
-                .glassEffect(.regular, in: surfaceShape)
-                .overlay {
-                    // Adaptive scrim — barely there at compact, enough at full to hold contrast
-                    // over bright map tiles.
-                    surfaceShape.fill(Color.kaidoMidnight.opacity(0.10 + 0.22 * progress))
-                }
-                .overlay(alignment: .top) {
-                    // Specular highlight along the top edge and into the corners.
-                    surfaceShape
-                        .stroke(
-                            LinearGradient(
-                                colors: [
-                                    Color.white.opacity(0.22 + 0.16 * progress),
-                                    Color.white.opacity(0.04),
-                                    Color.clear
-                                ],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            ),
-                            lineWidth: 1
-                        )
-                        // Only the top edge should read as lit; the sides and bottom run off
-                        // screen and shouldn't show a border.
-                        .mask {
-                            LinearGradient(
-                                colors: [.white, .white.opacity(0.25), .clear],
-                                startPoint: .top,
-                                endPoint: .center
-                            )
-                        }
-                }
+            ZStack {
+                surfaceShape
+                    .fill(.clear)
+                    .glassEffect(.regular, in: surfaceShape)
+
+                // Adaptive scrim — barely there at compact, enough at full to hold contrast
+                // over bright map tiles.
+                surfaceShape
+                    .fill(Color.kaidoMidnight)
+                    .opacity(0.10 + 0.22 * model.progress)
+
+                // Specular highlight along the top edge and into the corners. Constant paint;
+                // only its opacity tracks expansion.
+                surfaceShape
+                    .stroke(Self.highlightGradient, lineWidth: 1)
+                    .mask(Self.highlightMask)
+                    .opacity(0.6 + 0.4 * model.progress)
+            }
         }
     }
+
+    /// Hoisted to static so the gradient and mask are built once rather than per frame.
+    private static let highlightGradient = LinearGradient(
+        colors: [Color.white.opacity(0.34), Color.white.opacity(0.06), .clear],
+        startPoint: .top,
+        endPoint: .bottom
+    )
+
+    /// Only the top edge should read as lit — the sides and bottom run off screen and shouldn't
+    /// show a border.
+    private static let highlightMask = LinearGradient(
+        colors: [.white, .white.opacity(0.25), .clear],
+        startPoint: .top,
+        endPoint: .center
+    )
 }
