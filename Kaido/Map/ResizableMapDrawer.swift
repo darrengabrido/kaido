@@ -1,5 +1,26 @@
 import SwiftUI
 
+/// Built once and reused, so the drag doesn't rebuild them every frame.
+///
+/// These live outside `ResizableMapDrawer` because it's generic over its header and content,
+/// and Swift doesn't allow static stored properties in a generic type.
+private enum DrawerHighlight {
+    /// Specular sheen along the top edge and into the corners.
+    static let gradient = LinearGradient(
+        colors: [Color.white.opacity(0.34), Color.white.opacity(0.06), .clear],
+        startPoint: .top,
+        endPoint: .bottom
+    )
+
+    /// Only the top edge should read as lit — the sides and bottom run off screen and shouldn't
+    /// show a border.
+    static let mask = LinearGradient(
+        colors: [.white, .white.opacity(0.25), .clear],
+        startPoint: .top,
+        endPoint: .center
+    )
+}
+
 /// The map screen's bottom drawer: full-bleed glass, three detents, one canonical position.
 ///
 /// The body is laid out once at full height and revealed by moving the whole surface — never
@@ -178,25 +199,10 @@ struct ResizableMapDrawer<Header: View, Content: View>: View {
                 // Specular highlight along the top edge and into the corners. Constant paint;
                 // only its opacity tracks expansion.
                 surfaceShape
-                    .stroke(Self.highlightGradient, lineWidth: 1)
-                    .mask(Self.highlightMask)
+                    .stroke(DrawerHighlight.gradient, lineWidth: 1)
+                    .mask(DrawerHighlight.mask)
                     .opacity(0.6 + 0.4 * model.progress)
             }
         }
     }
-
-    /// Hoisted to static so the gradient and mask are built once rather than per frame.
-    private static let highlightGradient = LinearGradient(
-        colors: [Color.white.opacity(0.34), Color.white.opacity(0.06), .clear],
-        startPoint: .top,
-        endPoint: .bottom
-    )
-
-    /// Only the top edge should read as lit — the sides and bottom run off screen and shouldn't
-    /// show a border.
-    private static let highlightMask = LinearGradient(
-        colors: [.white, .white.opacity(0.25), .clear],
-        startPoint: .top,
-        endPoint: .center
-    )
 }
