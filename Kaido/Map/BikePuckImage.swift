@@ -28,8 +28,17 @@ enum BikePuckImage {
         Puck2DConfiguration.Pulsing(color: UIColor(Color.kaidoVioletOnMap), radius: .constant(22))
     }
 
-    private static let bmxYellow = UIColor(red: 0xF3 / 255, green: 0xB2 / 255, blue: 0x3A / 255, alpha: 1)
-    private static let chrome = UIColor(red: 0xDD / 255, green: 0xE1 / 255, blue: 0xE8 / 255, alpha: 1)
+    // The bike's body carries the palette's hero neutral — the same warm off-white as speed,
+    // time, and street names, so "you" reads with the weight of the most important data on
+    // screen. It deliberately isn't the bike's real-world yellow: amber already means caution
+    // in this app (`statusCaution` flags low battery and a dropped Ride Together connection),
+    // and a second accent outside the violet system would be the only one on the map that
+    // means nothing. The tribute lives in the shape, not the hex.
+    private static let frameColor = UIColor(Color.kaidoInk)
+
+    /// Fork, bars, hubs, cranks — violet, so the puck stays inside the one-accent system.
+    /// Violet can't carry the whole bike: on top of its own violet route the glyph disappears.
+    private static let hardwareColor = UIColor(Color.kaidoVioletOnMap)
 
     /// Scales the bike's base geometry (drawn in ~24pt-wide units) up to its on-screen size.
     private static let glyphScale: CGFloat = 1.28
@@ -97,8 +106,8 @@ enum BikePuckImage {
             let cg = context.cgContext
 
             // Without a disc behind it, the bike needs its own separation from the map —
-            // Mapbox's night style renders roads noticeably lighter than buildings, and bare
-            // yellow on bare asphalt loses its edges. A transparency layer means the whole
+            // Mapbox's night style renders roads noticeably lighter than buildings, and a bare
+            // glyph on bare asphalt loses its edges. A transparency layer means the whole
             // glyph casts one shadow as a silhouette, rather than every tube shadowing the
             // parts beneath it and muddying the middle.
             cg.setShadow(
@@ -114,7 +123,8 @@ enum BikePuckImage {
 
     /// A 1980s BMX in side profile. Three things make it read as a BMX rather than a generic
     /// bicycle at this size, in priority order: fat tires, a level top tube on a compact frame,
-    /// and high-rise bars. Chrome on the fork, bars, and hubs echoes the reference bike.
+    /// and high-rise bars. Violet on the fork, bars, and hubs picks out that cockpit against
+    /// the ink body the way chrome did on the reference bike.
     private static func drawBmx(in cg: CGContext, center: CGPoint) {
         let k = glyphScale
         func point(_ x: CGFloat, _ y: CGFloat) -> CGPoint {
@@ -133,7 +143,7 @@ enum BikePuckImage {
         cg.setLineJoin(.round)
 
         // Tires — chunky rings. The thick stroke is the point; BMX tires are fat.
-        cg.setStrokeColor(bmxYellow.cgColor)
+        cg.setStrokeColor(frameColor.cgColor)
         cg.setLineWidth(2.3 * k)
         for hub in [rear, front] {
             cg.addEllipse(in: CGRect(
@@ -143,7 +153,7 @@ enum BikePuckImage {
         }
         cg.strokePath()
 
-        cg.setFillColor(chrome.cgColor)
+        cg.setFillColor(hardwareColor.cgColor)
         for hub in [rear, front] {
             cg.addEllipse(in: CGRect(
                 x: hub.x - 1.15 * k, y: hub.y - 1.15 * k,
@@ -159,7 +169,7 @@ enum BikePuckImage {
         frame.move(to: seatTop); frame.addLine(to: bottomBracket) // seat tube
         frame.move(to: bottomBracket); frame.addLine(to: rear) // chain stay
         frame.move(to: seatTop); frame.addLine(to: rear) // seat stay
-        cg.setStrokeColor(bmxYellow.cgColor)
+        cg.setStrokeColor(frameColor.cgColor)
         cg.setLineWidth(2.1 * k)
         cg.addPath(frame)
         cg.strokePath()
@@ -171,7 +181,7 @@ enum BikePuckImage {
         forkAndBars.move(to: headTop)
         forkAndBars.addLine(to: CGPoint(x: headTop.x - 0.4 * k, y: headTop.y - 4.4 * k))
         forkAndBars.addLine(to: CGPoint(x: headTop.x - 3.4 * k, y: headTop.y - 4.9 * k))
-        cg.setStrokeColor(chrome.cgColor)
+        cg.setStrokeColor(hardwareColor.cgColor)
         cg.setLineWidth(1.95 * k)
         cg.addPath(forkAndBars)
         cg.strokePath()
@@ -188,14 +198,14 @@ enum BikePuckImage {
         cg.addLine(to: CGPoint(x: seatTop.x - 0.3 * k, y: seatTop.y - 1.9 * k))
         cg.strokePath()
 
-        cg.setStrokeColor(bmxYellow.cgColor)
+        cg.setStrokeColor(frameColor.cgColor)
         cg.setLineWidth(2.0 * k)
         cg.move(to: CGPoint(x: seatTop.x - 2.2 * k, y: seatTop.y - 2.4 * k))
         cg.addLine(to: CGPoint(x: seatTop.x + 1.0 * k, y: seatTop.y - 2.1 * k))
         cg.strokePath()
 
         // Chainring
-        cg.setFillColor(chrome.cgColor)
+        cg.setFillColor(hardwareColor.cgColor)
         cg.addEllipse(in: CGRect(
             x: bottomBracket.x - 1.5 * k, y: bottomBracket.y - 1.5 * k,
             width: 3 * k, height: 3 * k
