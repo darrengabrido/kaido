@@ -90,13 +90,15 @@ struct NavigationSessionView: UIViewControllerRepresentable {
 
         let bottomBanner = viewController.navigationView.bottomBannerContainerView
         NSLayoutConstraint.activate([
+            // 12pt matches the outer inset GlassTopBanner/GlassBottomBanner apply to
+            // themselves, so all three docked cards share the same edges.
             barController.view.leadingAnchor.constraint(
                 equalTo: viewController.view.leadingAnchor,
-                constant: 16
+                constant: 12
             ),
             barController.view.trailingAnchor.constraint(
                 equalTo: viewController.view.trailingAnchor,
-                constant: -16
+                constant: -12
             ),
             barController.view.bottomAnchor.constraint(
                 equalTo: bottomBanner.topAnchor,
