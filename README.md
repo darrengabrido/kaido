@@ -141,6 +141,8 @@ Because Kaido uses Apple's *native* sign-in (an on-device ID token exchanged via
 
 Sign in with Apple only works end-to-end on a device or simulator signed into an Apple Account.
 
+If sign-in fails with `Unacceptable audience in id_token: [com.oaktreehouse.kaido]`, Supabase rejected the token because the Apple provider's **Client IDs** field (step 3 above) doesn't contain the bundle ID — it's empty, has a typo, has a Services ID instead, or has trailing whitespace from a paste. The app can't fix this client-side: the `aud` claim Apple puts in the token is always the bundle ID for native sign-in, so the Supabase-side allowlist has to match it exactly.
+
 ### Enabling Ride Together
 
 Reuses the same Supabase project as sign-in — no separate project needed. See
