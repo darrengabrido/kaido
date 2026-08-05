@@ -11,6 +11,12 @@ Kaido is a **native iOS / SwiftUI app** (see `README.md`). Building or running t
 Build` GitHub Actions workflow (macOS runner), which builds and runs `KaidoTests` on every push/PR.
 There is no Swift linter configured (no SwiftLint/SwiftFormat).
 
+`scripts/setup.sh` (added for fresh macOS clones) automates the macOS-side steps — Xcode/XcodeGen
+checks, `Config/Secrets.xcconfig`, the Mapbox `~/.netrc` download credential, `xcodegen generate`,
+package resolution — but it explicitly refuses to run anywhere but macOS
+(`uname -s == Darwin`, confirmed by running it here: `error: Kaido is an iOS app — setup only runs
+on macOS.`). It doesn't change the constraint above; there's no Linux path through it.
+
 The **only component that runs on the Linux VM is the Supabase backend** — the "Ride Together"
 schema, RPCs, and RLS policies in `supabase/migrations/0001_group_rides.sql`. That is the piece to
 exercise for any server-side / SQL change.
