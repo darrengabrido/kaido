@@ -140,21 +140,8 @@ struct MapboxMapView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                 .zIndex(2)
         }
-        // Detents are derived from the live viewport rather than hard-coded, so the drawer sits
-        // correctly on every device. Bottom inset is zero by design: this screen is inside a
-        // TabView, so the layout is already inset above the tab bar and adding it again would
-        // double-count.
-        .background {
-            GeometryReader { proxy in
-                Color.clear
-                    .onAppear {
-                        drawerModel.updateGeometry(usableHeight: proxy.size.height, bottomSafeArea: 0)
-                    }
-                    .onChange(of: proxy.size.height) { _, height in
-                        drawerModel.updateGeometry(usableHeight: height, bottomSafeArea: 0)
-                    }
-            }
-        }
+        // Geometry now comes from the drawer's own view controller, in viewDidLayoutSubviews,
+        // so there's a single source for it rather than two that can disagree.
         .onAppear {
             navigationViewModel.updateRideTimeProfile(activeRideTimeProfile)
         }
@@ -393,9 +380,9 @@ struct MapboxMapView: View {
     }
 
     private var mapDrawer: some View {
-        ResizableMapDrawer(
+        DrawerPanHost(
             model: drawerModel,
-            onSettle: { settleDrawer(to: $0) }
+            reduceMotion: reduceMotion
         ) {
             if let destination = searchViewModel.selectedDestination {
                 placeDetailsSheetHeader(destination)
