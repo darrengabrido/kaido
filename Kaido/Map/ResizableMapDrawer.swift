@@ -59,7 +59,15 @@ struct ResizableMapDrawer<Header: View, Content: View>: View {
         VStack(spacing: 0) {
             header
                 .frame(maxWidth: .infinity)
-                .background(headerHeightReader)
+                // Compact wraps this exactly, so the measurement has to be reliable. Reading it
+                // through a GeometryReader in a background and pushing it out from onAppear
+                // can silently miss the first layout pass, leaving compact sized off a
+                // fallback guess instead of the real header.
+                .onGeometryChange(for: CGFloat.self) { proxy in
+                    proxy.size.height
+                } action: { height in
+                    model.updateHeaderHeight(height)
+                }
                 .contentShape(Rectangle())
                 // The header is the drag surface in every state.
                 .gesture(drawerDrag)
@@ -99,16 +107,6 @@ struct ResizableMapDrawer<Header: View, Content: View>: View {
         // At full, a downward drag that starts with the body already at its top collapses the
         // drawer instead of rubber-banding the scroll view.
         .simultaneousGesture(bodyDrag)
-    }
-
-    private var headerHeightReader: some View {
-        GeometryReader { proxy in
-            Color.clear
-                .onAppear { model.updateHeaderHeight(proxy.size.height) }
-                .onChange(of: proxy.size.height) { _, height in
-                    model.updateHeaderHeight(height)
-                }
-        }
     }
 
     // MARK: Gestures
