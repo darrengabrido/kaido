@@ -402,6 +402,10 @@ struct MapboxMapView: View {
                     .padding(.bottom, 24)
             }
         }
+        // The keyboard must not resize the drawer's container. If it does, every detent is
+        // recomputed against a shorter viewport and the drawer re-animates underneath whatever
+        // is being typed. Presenting the keyboard should only reduce the body's scroll height.
+        .ignoresSafeArea(.keyboard)
         // Attached to the drawer rather than to the screen's ZStack, whose one sheet slot
         // already belongs to the Ride Together display-name prompt.
         .sheet(isPresented: $isPresentingProfile) {

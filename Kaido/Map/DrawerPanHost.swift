@@ -40,7 +40,11 @@ final class DrawerPanController<Header: View, Content: View>: UIViewController, 
     private var heightConstraint: NSLayoutConstraint?
     private var animator: UIViewPropertyAnimator?
     private var dragStartHeight: CGFloat = 0
+    private var didDismissKeyboardForThisDrag = false
     var reduceMotion = false
+
+    /// Far enough that it can only be a deliberate pull-down, not a finger settling on the field.
+    private static var keyboardDismissThreshold: CGFloat { 44 }
 
     init(model: MapDrawerModel, rootView: DrawerSurface<Header, Content>) {
         self.model = model
@@ -141,11 +145,18 @@ final class DrawerPanController<Header: View, Content: View>: UIViewController, 
             animator?.stopAnimation(true)
             animator = nil
             dragStartHeight = model.height
+            didDismissKeyboardForThisDrag = false
             model.beginDrag()
 
         case .changed:
-            // Dragging down with the keyboard up dismisses the keyboard and leaves the drawer.
-            if translation > 0, model.isKeyboardVisible {
+            // A deliberate downward drag with the keyboard up dismisses the keyboard first, and
+            // leaves the drawer where it is. The distance threshold matters: a pan reports
+            // `.changed` for a few points of incidental drift, and dismissing on that would
+            // pull focus out of the search field the moment a finger rested on it.
+            if !didDismissKeyboardForThisDrag,
+               translation > Self.keyboardDismissThreshold,
+               model.isKeyboardVisible {
+                didDismissKeyboardForThisDrag = true
                 model.isSearchFocused = false
                 return
             }
