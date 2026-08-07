@@ -182,9 +182,23 @@ final class AuthViewModel {
             return true
         } catch {
             DebugLog.shared.log("Sign in with Apple failed: \(error.localizedDescription)", category: "Auth")
-            errorMessage = error.localizedDescription
+            errorMessage = Self.friendlyAppleSignInMessage(for: error)
             return false
         }
+    }
+
+    /// Supabase rejects Apple's id_token server-side when its `aud` (the app's bundle ID)
+    /// isn't listed in the Apple provider's Client IDs, surfacing as
+    /// "Unacceptable audience in id_token: [...]" — a message that names an internal
+    /// claim rather than the fix, so it's rewritten here to point at the actual cause.
+    /// See README.md § "Enabling sign-in" step 3.
+    private static func friendlyAppleSignInMessage(for error: Error) -> String {
+        let description = error.localizedDescription
+        guard description.localizedCaseInsensitiveContains("unacceptable audience") else {
+            return description
+        }
+        return "Apple sign-in isn't fully set up on the server yet. In the Supabase dashboard, go to "
+            + "Authentication → Providers → Apple and add \"com.oaktreehouse.kaido\" to Client IDs."
     }
 
     private static let notConfiguredMessage =
