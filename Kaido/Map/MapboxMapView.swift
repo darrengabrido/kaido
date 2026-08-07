@@ -35,6 +35,10 @@ struct MapboxMapView: View {
     /// A view honours only one `.sheet`, so the drawer's two destinations share one, keyed by
     /// this rather than by a pair of booleans that would silently fight each other.
     @State private var presentedSheet: DrawerSheet?
+    /// Collapsed by default so the card reads as one line; expands in place to show the route
+    /// comparison. Reset on every new destination so an old pick's expanded state never carries
+    /// over.
+    @State private var isRouteDetailsExpanded = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     // Ride Together
@@ -205,6 +209,9 @@ struct MapboxMapView: View {
         }
         .onChange(of: searchViewModel.query) { _, _ in
             searchViewModel.queryDidChange()
+        }
+        .onChange(of: searchViewModel.selectedDestination?.id) { _, _ in
+            isRouteDetailsExpanded = false
         }
         // Live dictation streams straight into the query, so debounce, suggestions, and results
         // behave exactly as they do for typing.
@@ -757,8 +764,6 @@ struct MapboxMapView: View {
                     .background(Color.statusCritical.opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
             }
 
-            routingPreferenceToggle
-
             if navigationViewModel.isRequestingRoute && navigationViewModel.navigationRoutes == nil {
                 HStack(spacing: 8) {
                     ProgressView()
@@ -771,10 +776,15 @@ struct MapboxMapView: View {
             }
 
             if navigationViewModel.navigationRoutes != nil {
-                routeOptionsList
-                // Sits below the options because it explains them — the times above are stated
-                // in terms of this bike.
-                paceRow
+                routeSummaryRow
+
+                if isRouteDetailsExpanded {
+                    routingPreferenceToggle
+                    routeOptionsList
+                    // Sits below the options because it explains them — the times above are
+                    // stated in terms of this bike.
+                    paceRow
+                }
             }
 
             if let rideTogetherErrorMessage {
@@ -1076,6 +1086,49 @@ struct MapboxMapView: View {
         .accessibilityLabel(accessibilityLabel)
     }
 
+    /// One line at rest — duration, distance, and how the ride reads — with the full comparison
+    /// a tap away instead of always open. Mirrors `paceRowLabel`'s glass-chip styling so the two
+    /// tappable rows in this card read as the same kind of control.
+    @ViewBuilder
+    private var routeSummaryRow: some View {
+        if let option = navigationViewModel.routeOptions.first(where: \.isMain) {
+            Button {
+                withAnimation(
+                    reduceMotion ? .easeOut(duration: 0.2) : .spring(response: 0.35, dampingFraction: 0.86)
+                ) {
+                    isRouteDetailsExpanded.toggle()
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    Text(
+                        "\(formattedDuration(option.personalizedTravelTime)) · " +
+                        "\(formattedDistance(option.distanceMeters)) · " +
+                        stressShortLabel(for: option.stressProfile.score)
+                    )
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(Color.primary)
+                    .lineLimit(1)
+
+                    Spacer(minLength: 0)
+
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Color.kaidoDim)
+                        .rotationEffect(.degrees(isRouteDetailsExpanded ? 0 : -90))
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.kaidoInk.opacity(0.045), in: RoundedRectangle(cornerRadius: 11))
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Route details")
+            .accessibilityValue(isRouteDetailsExpanded ? "Expanded" : "Collapsed")
+            .accessibilityHint("Double tap to show or hide route options and pace settings")
+        }
+    }
+
     /// Quiet leans on dedicated lanes and quieter streets; Fast picks the quickest alternative.
     /// Lives next to the alternatives list so the preference is visible while comparing routes.
     /// No caption above it any more — "Quiet" and "Fast" next to each other say what they are,
@@ -1181,6 +1234,16 @@ struct MapboxMapView: View {
         case ..<0.35: .statusGood
         case ..<0.55: .statusCaution
         default: .statusCritical
+        }
+    }
+
+    /// Short form of `RouteStressScorer.Profile.headline` for the one-line summary row — same
+    /// score bands, a phrase instead of a sentence.
+    private func stressShortLabel(for score: Double) -> String {
+        switch score {
+        case ..<0.35: "Mostly quiet"
+        case ..<0.55: "Mixed"
+        default: "Busier roads"
         }
     }
 
