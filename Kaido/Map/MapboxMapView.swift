@@ -1174,6 +1174,33 @@ struct MapboxMapView: View {
         .contentShape(Rectangle())
     }
 
+    /// Quiet routes read sage, mixed brass, busy clay — the status colours, used here for a
+    /// qualitative state rather than to label a quantity.
+    private func quietColor(for stress: Double) -> Color {
+        switch stress {
+        case ..<0.35: .statusGood
+        case ..<0.55: .statusCaution
+        default: .statusCritical
+        }
+    }
+
+    /// Violet remains the active route. Mapbox returns up to two cycling alternatives, which
+    /// receive blue and coral respectively — deliberately separate from the mint used for bike
+    /// lanes, so a rider can compare route choices without mistaking one for infrastructure.
+    ///
+    /// Static so `KaidoMapCanvas` can share it without a reference back to this view.
+    static func routeColor(for option: RouteOption, in routeOptions: [RouteOption]) -> Color {
+        guard !option.isMain else { return .kaidoViolet }
+        let alternateIndex = routeOptions
+            .filter { !$0.isMain }
+            .firstIndex { $0.id == option.id } ?? 0
+
+        switch alternateIndex % 2 {
+        case 0: return .routeBlueOnMap
+        default: return .routeCoralOnMap
+        }
+    }
+
     private func routeAccessibilityLabel(for option: RouteOption) -> String {
         let duration = formattedDuration(option.personalizedTravelTime)
         let distance = formattedDistance(option.distanceMeters)
