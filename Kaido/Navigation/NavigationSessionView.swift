@@ -50,9 +50,12 @@ struct NavigationSessionView: UIViewControllerRepresentable {
         return viewController
     }
 
-    /// Docks the Now Playing bar and a Kaido recenter control above Mapbox's bottom banner.
-    /// The stock Resume button sits on the leading edge of that same band and ends up under
-    /// the media bar, so we hide it and expose our own trailing control instead.
+    /// Docks the Now Playing bar, the bike telemetry HUD, and a Kaido recenter control above
+    /// Mapbox's bottom banner. All three are pinned with real Auto Layout constraints — instead
+    /// of a guessed SwiftUI padding — so they stack correctly no matter how tall the banner or
+    /// media bar actually are. The stock Resume button sits on the leading edge of that same
+    /// band and ends up under the media bar, so we hide it and expose our own trailing control
+    /// instead.
     private func addNavigationChrome(
         to viewController: NavigationViewController,
         coordinator: Coordinator
@@ -73,12 +76,19 @@ struct NavigationSessionView: UIViewControllerRepresentable {
         recenterController.view.backgroundColor = .clear
         recenterController.view.translatesAutoresizingMaskIntoConstraints = false
 
+        let hudController = UIHostingController(rootView: RideHUDView(telemetry: telemetry))
+        hudController.view.backgroundColor = .clear
+        hudController.view.translatesAutoresizingMaskIntoConstraints = false
+
         viewController.addChild(barController)
         viewController.addChild(recenterController)
+        viewController.addChild(hudController)
         viewController.view.addSubview(barController.view)
         viewController.view.addSubview(recenterController.view)
+        viewController.view.addSubview(hudController.view)
         barController.didMove(toParent: viewController)
         recenterController.didMove(toParent: viewController)
+        hudController.didMove(toParent: viewController)
 
         let bottomBanner = viewController.navigationView.bottomBannerContainerView
         NSLayoutConstraint.activate([
@@ -106,7 +116,16 @@ struct NavigationSessionView: UIViewControllerRepresentable {
                 constant: -12
             ),
             recenterController.view.widthAnchor.constraint(equalToConstant: 44),
-            recenterController.view.heightAnchor.constraint(equalToConstant: 44)
+            recenterController.view.heightAnchor.constraint(equalToConstant: 44),
+
+            hudController.view.trailingAnchor.constraint(
+                equalTo: viewController.view.trailingAnchor,
+                constant: -16
+            ),
+            hudController.view.bottomAnchor.constraint(
+                equalTo: recenterController.view.topAnchor,
+                constant: -12
+            )
         ])
 
         let paddingProbe = NavigationPaddingProbeView()
