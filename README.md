@@ -141,6 +141,13 @@ Because Kaido uses Apple's *native* sign-in (an on-device ID token exchanged via
 
 Sign in with Apple only works end-to-end on a device or simulator signed into an Apple Account.
 
+### Enabling Spotify
+
+1. **Spotify Developer Dashboard** — [create an app](https://developer.spotify.com/dashboard), then copy its Client ID into `SPOTIFY_CLIENT_ID` in `Config/Secrets.xcconfig`.
+2. **Edit Settings** on that app → add `kaido://spotify-callback` under **Redirect URIs**, and add `com.oaktreehouse.kaido` under **Platforms → iOS → Bundle ID**.
+
+Both are required, but the iOS Bundle ID is easy to miss since it lives on a separate tab from Redirect URIs. If it's missing or stale, Connect still bounces out to the Spotify app successfully, but the redirect back to Kaido carries an error instead of a token — surfacing as a generic `error_description: "An unknown error has occured"` in the Debug Log (Profile → Debug Log) rather than anything naming the mismatch.
+
 ### Enabling Ride Together
 
 Reuses the same Supabase project as sign-in — no separate project needed. See
