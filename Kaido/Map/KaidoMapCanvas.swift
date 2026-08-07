@@ -14,6 +14,10 @@ struct KaidoMapCanvas: View {
     @Binding var viewport: Viewport
     let showBikeLanes: Bool
     let selectedDestination: SearchResult?
+    /// Candidate places from an in-progress search — shown as pins only while browsing, before
+    /// a destination is picked (the caller passes an empty array once one is selected).
+    let searchResults: [SearchResult]
+    let onSelectResult: (SearchResult) -> Void
     let routeOptions: [RouteOption]
     let onSelectRoute: (RouteOption) -> Void
 
@@ -25,6 +29,22 @@ struct KaidoMapCanvas: View {
 
             if showBikeLanes {
                 BikeLaneMapLayers()
+            }
+
+            // Drawn before the selected-destination pin so a chosen result's larger red pin
+            // still renders on top of the candidate set, if both are briefly visible at once.
+            if !searchResults.isEmpty {
+                CircleAnnotationGroup(searchResults) { result in
+                    CircleAnnotation(centerCoordinate: result.coordinate)
+                        .circleColor(UIColor(Color.kaidoViolet))
+                        .circleRadius(6)
+                        .circleStrokeColor(.white)
+                        .circleStrokeWidth(1.5)
+                        .onTapGesture {
+                            onSelectResult(result)
+                        }
+                }
+                .circleEmissiveStrength(1)
             }
 
             if let selectedDestination {

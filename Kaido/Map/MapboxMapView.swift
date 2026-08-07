@@ -106,6 +106,8 @@ struct MapboxMapView: View {
                 viewport: $viewport,
                 showBikeLanes: showBikeLanes,
                 selectedDestination: searchViewModel.selectedDestination,
+                searchResults: searchViewModel.selectedDestination == nil ? searchViewModel.filteredResults : [],
+                onSelectResult: selectDestination,
                 routeOptions: navigationViewModel.routeOptions,
                 onSelectRoute: { option in
                     Task {
@@ -231,6 +233,17 @@ struct MapboxMapView: View {
             // Shorter medium detent while a place card is up so the map stays the hero.
             drawerModel.mediumTopFractionOverride = destinationID == nil ? nil : 0.55
         }
+        // Frame every candidate pin as results come in (or a category pill narrows them),
+        // so the rider can see what's nearby without manually panning to find it.
+        .onChange(of: searchViewModel.filteredResults) { _, newResults in
+            guard searchViewModel.selectedDestination == nil, !newResults.isEmpty else { return }
+            guard let fitted = MapViewportFollow.fit(newResults.map(\.coordinate), bottomPadding: followBottomPadding) else {
+                return
+            }
+            withViewportAnimation(.default(maxDuration: 1)) {
+                viewport = fitted
+            }
+        }
         // Live dictation streams straight into the query, so debounce, suggestions, and results
         // behave exactly as they do for typing.
         .onChange(of: speechService.liveTranscript) { _, transcript in
@@ -352,7 +365,7 @@ struct MapboxMapView: View {
     /// that differs between the two contexts.
     private func resultsList(onSelect: @escaping (SearchResult) -> Void) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            ForEach(searchViewModel.results) { result in
+            ForEach(searchViewModel.filteredResults) { result in
                 Button {
                     onSelect(result)
                 } label: {
@@ -390,7 +403,7 @@ struct MapboxMapView: View {
                 }
                 .buttonStyle(.plain)
 
-                if result.id != searchViewModel.results.last?.id {
+                if result.id != searchViewModel.filteredResults.last?.id {
                     Divider()
                         .padding(.leading, 48)
                 }
@@ -558,6 +571,12 @@ struct MapboxMapView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             } else if !searchViewModel.results.isEmpty {
+                if searchViewModel.categoryTallies.count > 1 {
+                    CategoryPillsView(
+                        categories: searchViewModel.categoryTallies,
+                        selected: $searchViewModel.selectedCategory
+                    )
+                }
                 resultsList(onSelect: selectDestination)
             } else if let message = speechErrorMessage ?? searchViewModel.searchError {
                 Text(message)

@@ -2,7 +2,7 @@ import Foundation
 import CoreLocation
 import MapboxMaps
 
-struct SearchResult: Identifiable {
+struct SearchResult: Identifiable, Equatable {
     let id: String
     let name: String
     let placeFormatted: String?
@@ -10,6 +10,11 @@ struct SearchResult: Identifiable {
     let category: String?
     let iconName: String
     let isPOI: Bool
+    let placeCategory: PlaceCategory
+
+    static func == (lhs: SearchResult, rhs: SearchResult) -> Bool {
+        lhs.id == rhs.id
+    }
 }
 
 enum GeocodingError: LocalizedError {
@@ -99,7 +104,9 @@ struct GeocodingService {
         }
         var queryItems = [
             URLQueryItem(name: "q", value: query),
-            URLQueryItem(name: "limit", value: "8"),
+            // Search Box's max — category pills subdivide the list, so a fuller set of
+            // candidates keeps each pill from feeling sparse.
+            URLQueryItem(name: "limit", value: "10"),
             URLQueryItem(name: "access_token", value: accessToken)
         ]
         if let proximity {
@@ -118,7 +125,34 @@ struct GeocodingService {
         }
 
         let decoded = try JSONDecoder().decode(SearchBoxResponse.self, from: data)
-        return decoded.features.map(Self.searchResult(from:))
+        return Self.rank(decoded.features.map(Self.searchResult(from:)), near: proximity)
+    }
+
+    /// Businesses first (Mapbox's own relevance order doesn't reliably rank a named POI ahead
+    /// of a same-text street address), nearest-first within each group, and duplicate listings
+    /// for the same place (chain locations Mapbox returns as near-identical entries) collapsed.
+    private static func rank(_ results: [SearchResult], near proximity: CLLocationCoordinate2D?) -> [SearchResult] {
+        var seenKeys = Set<String>()
+        let deduped = results.filter { result in
+            let roundedLat = (result.coordinate.latitude * 10_000).rounded() / 10_000
+            let roundedLon = (result.coordinate.longitude * 10_000).rounded() / 10_000
+            let key = "\(result.name.lowercased())|\(roundedLat)|\(roundedLon)"
+            return seenKeys.insert(key).inserted
+        }
+
+        guard let proximity else {
+            // `sorted(by:)` has been stable since Swift 5, so ties preserve Mapbox's own order.
+            return deduped.sorted { $0.isPOI && !$1.isPOI }
+        }
+        let proximityLocation = CLLocation(latitude: proximity.latitude, longitude: proximity.longitude)
+        func distance(_ result: SearchResult) -> CLLocationDistance {
+            CLLocation(latitude: result.coordinate.latitude, longitude: result.coordinate.longitude)
+                .distance(from: proximityLocation)
+        }
+        return deduped.sorted { lhs, rhs in
+            if lhs.isPOI != rhs.isPOI { return lhs.isPOI }
+            return distance(lhs) < distance(rhs)
+        }
     }
 
     private func categorySearch(
@@ -150,6 +184,7 @@ struct GeocodingService {
     private static func searchResult(from feature: SearchBoxResponse.Feature) -> SearchResult {
         let props = feature.properties
         let isPOI = props.featureType == "poi"
+        let (iconName, placeCategory) = PlaceCategory.categorize(maki: props.maki, isPOI: isPOI)
         return SearchResult(
             id: props.mapboxId ?? UUID().uuidString,
             name: props.name,
@@ -159,8 +194,9 @@ struct GeocodingService {
                 longitude: props.coordinates.longitude
             ),
             category: props.poiCategory?.first?.capitalized,
-            iconName: symbolName(maki: props.maki, isPOI: isPOI),
-            isPOI: isPOI
+            iconName: iconName,
+            isPOI: isPOI,
+            placeCategory: placeCategory
         )
     }
 
@@ -174,30 +210,6 @@ struct GeocodingService {
 
     private static func isPlaceholderToken(_ token: String) -> Bool {
         token.contains("your_mapbox") || token.hasSuffix("_here")
-    }
-
-    /// Maps Mapbox "maki" icon names to the closest SF Symbol.
-    private static func symbolName(maki: String?, isPOI: Bool) -> String {
-        guard let maki else { return isPOI ? "mappin.circle.fill" : "location.circle.fill" }
-        switch maki {
-        case "cafe", "coffee": return "cup.and.saucer.fill"
-        case "restaurant", "restaurant-pizza", "fast-food": return "fork.knife"
-        case "bar", "beer", "alcohol-shop": return "wineglass.fill"
-        case "grocery", "shop": return "cart.fill"
-        case "fuel", "charging-station": return "fuelpump.fill"
-        case "lodging": return "bed.double.fill"
-        case "bicycle", "bicycle-share": return "bicycle"
-        case "bank": return "banknote.fill"
-        case "hospital", "pharmacy", "doctor": return "cross.fill"
-        case "park", "garden": return "tree.fill"
-        case "school", "college": return "graduationcap.fill"
-        case "fitness-centre", "gym": return "figure.run"
-        case "cinema", "theatre": return "film.fill"
-        case "parking": return "parkingsign"
-        case "airport", "airfield": return "airplane"
-        case "rail", "rail-metro", "bus": return "tram.fill"
-        default: return isPOI ? "mappin.circle.fill" : "location.circle.fill"
-        }
     }
 }
 
