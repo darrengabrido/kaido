@@ -32,7 +32,9 @@ struct MapboxMapView: View {
     /// record, so the control is never decorative.
     @State private var speechService = SpeechQuickMessageService()
     @State private var speechErrorMessage: String?
-    @State private var isPresentingProfile = false
+    /// A view honours only one `.sheet`, so the drawer's two destinations share one, keyed by
+    /// this rather than by a pair of booleans that would silently fight each other.
+    @State private var presentedSheet: DrawerSheet?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     // Ride Together
@@ -42,6 +44,20 @@ struct MapboxMapView: View {
     @State private var pendingRawInviteToken: String?
     @State private var rideTogetherErrorMessage: String?
     @State private var isCreatingRideTogether = false
+
+    /// What the drawer can present. The Ride Together display-name prompt is a separate sheet on
+    /// the screen's ZStack, which is a different view and so doesn't contend with these.
+    private enum DrawerSheet: Identifiable {
+        case profile
+        case bike(BikeProfile)
+
+        var id: String {
+            switch self {
+            case .profile: "profile"
+            case .bike(let profile): "bike-\(profile.persistentModelID.hashValue)"
+            }
+        }
+    }
 
     private var isFollowingUser: Bool {
         viewport.followPuck != nil
@@ -408,8 +424,27 @@ struct MapboxMapView: View {
         .ignoresSafeArea(.keyboard)
         // Attached to the drawer rather than to the screen's ZStack, whose one sheet slot
         // already belongs to the Ride Together display-name prompt.
-        .sheet(isPresented: $isPresentingProfile) {
-            NavigationStack { ProfileView() }
+        .sheet(item: $presentedSheet) { sheet in
+            switch sheet {
+            case .profile:
+                NavigationStack { ProfileView() }
+            case .bike(let bike):
+                BikeProfileEditorView(
+                    profile: bike,
+                    onSave: {
+                        BikeProfileStore.activate(bike, among: bikeProfiles)
+                        bleManager.apply(profile: bike)
+                        try? modelContext.save()
+                        // Route times are derived from this, so re-price them immediately.
+                        navigationViewModel.updateRideTimeProfile(activeRideTimeProfile)
+                    },
+                    onDelete: {
+                        modelContext.delete(bike)
+                        try? modelContext.save()
+                        navigationViewModel.updateRideTimeProfile(activeRideTimeProfile)
+                    }
+                )
+            }
         }
     }
 
@@ -433,7 +468,7 @@ struct MapboxMapView: View {
     /// because the ZStack's one sheet slot is taken by the display-name prompt.
     private var profileButton: some View {
         Button {
-            isPresentingProfile = true
+            presentedSheet = .profile
         } label: {
             Image(systemName: "person.fill")
                 .font(.system(size: 17, weight: .medium))
@@ -737,6 +772,9 @@ struct MapboxMapView: View {
 
             if navigationViewModel.navigationRoutes != nil {
                 routeOptionsList
+                // Sits below the options because it explains them — the times above are stated
+                // in terms of this bike.
+                paceRow
             }
 
             if let rideTogetherErrorMessage {
@@ -745,8 +783,11 @@ struct MapboxMapView: View {
                     .foregroundStyle(Color.statusCritical)
             }
 
-            startNavigationButton
-            rideTogetherButton
+            VStack(spacing: 2) {
+                startNavigationButton
+                rideTogetherButton
+            }
+            .padding(.top, 2)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -757,23 +798,72 @@ struct MapboxMapView: View {
         let allOptions: [RouteOption]
     }
 
+    /// Secondary to Start Navigation rather than its equal. Two full-width filled buttons made
+    /// the card ask which of them you wanted; riding solo is the common case, so it gets the
+    /// weight and this keeps a plain, quieter treatment.
     private var rideTogetherButton: some View {
         Button {
             Task { await startRideTogetherFlow() }
         } label: {
             if isCreatingRideTogether {
-                ProgressView().frame(maxWidth: .infinity)
+                ProgressView().frame(maxWidth: .infinity).frame(height: 22)
             } else {
                 Label("Ride Together", systemImage: "person.2.fill")
                     .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color.kaidoVioletOnMap)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 4)
+                    .frame(height: 22)
             }
         }
-        .buttonStyle(.bordered)
-        .tint(.kaidoViolet)
+        .buttonStyle(.plain)
+        .padding(.vertical, 11)
+        .contentShape(Rectangle())
         .disabled(isRouteUnavailable || isCreatingRideTogether)
+        .opacity(isRouteUnavailable ? 0.48 : 1)
         .accessibilityHint("Invite other riders to navigate to this destination together")
+    }
+
+    /// The pace line used to be violet text that did nothing. It explains why the times read the
+    /// way they do, and the thing it describes — the active bike — is editable, so it's a real
+    /// control now instead of decoration wearing the interactive colour.
+    @ViewBuilder
+    private var paceRow: some View {
+        let profile = navigationViewModel.rideTimeProfile
+
+        if let activeBike = BikeProfileStore.activeProfile(in: bikeProfiles) {
+            Button {
+                presentedSheet = .bike(activeBike)
+            } label: {
+                paceRowLabel(profile.paceDescription, isInteractive: true)
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("Edit this bike's pace settings")
+        } else {
+            // No saved bike to open, so it stays plain text rather than a control that
+            // wouldn't lead anywhere.
+            paceRowLabel(profile.paceDescription, isInteractive: false)
+        }
+    }
+
+    private func paceRowLabel(_ pace: String, isInteractive: Bool) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "bicycle")
+                .font(.system(size: 13, weight: .semibold))
+            Text("Times for \(pace)")
+                .font(.caption)
+                .lineLimit(1)
+            Spacer(minLength: 0)
+            if isInteractive {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .semibold))
+            }
+        }
+        .foregroundStyle(isInteractive ? Color.kaidoVioletOnMap : Color.kaidoDim)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.kaidoInk.opacity(0.045), in: RoundedRectangle(cornerRadius: 11))
+        .contentShape(Rectangle())
     }
 
     private func startRideTogetherFlow() async {
@@ -907,15 +997,10 @@ struct MapboxMapView: View {
                     .font(.title3.weight(.semibold))
                     .lineLimit(1)
 
-                if let category = destination.category {
-                    Text(category.uppercased())
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(Color.kaidoVioletOnMap)
-                        .lineLimit(1)
-                }
-
-                if let placeFormatted = destination.placeFormatted {
-                    Text(placeFormatted)
+                // Category and address share one dim line. The category used to be violet, which
+                // in this palette means "your route, or yours to touch" — it's neither.
+                if let subtitle = destinationSubtitle(destination) {
+                    Text(subtitle)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
@@ -952,6 +1037,25 @@ struct MapboxMapView: View {
         }
     }
 
+    /// "Pier · 100 Fishermans Wharf, Redondo Beach". The country is dropped: it pushed the line
+    /// into a truncation that read as broken ("…United St…") while telling a local rider nothing.
+    private func destinationSubtitle(_ destination: SearchResult) -> String? {
+        var parts: [String] = []
+        if let category = destination.category, !category.isEmpty {
+            parts.append(category.capitalized)
+        }
+        if let address = destination.placeFormatted, !address.isEmpty {
+            let trimmed = address
+                .split(separator: ",", omittingEmptySubsequences: true)
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.localizedCaseInsensitiveContains("United States") }
+                .joined(separator: ", ")
+            parts.append(trimmed.isEmpty ? address : trimmed)
+        }
+        let subtitle = parts.joined(separator: " · ")
+        return subtitle.isEmpty ? nil : subtitle
+    }
+
     private func destinationHeaderButton(
         systemImage: String,
         isSelected: Bool,
@@ -974,12 +1078,10 @@ struct MapboxMapView: View {
 
     /// Quiet leans on dedicated lanes and quieter streets; Fast picks the quickest alternative.
     /// Lives next to the alternatives list so the preference is visible while comparing routes.
+    /// No caption above it any more — "Quiet" and "Fast" next to each other say what they are,
+    /// and the all-caps label was carrying a line of vertical space for nothing.
     private var routingPreferenceToggle: some View {
         VStack(alignment: .leading, spacing: 7) {
-            Text("ROUTE STYLE")
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(Color.kaidoDim)
-
             Picker("Routing style", selection: $navigationViewModel.preference) {
                 ForEach(RoutingPreference.allCases) { preference in
                     Label(preference.title, systemImage: preference.systemImage)
@@ -996,113 +1098,80 @@ struct MapboxMapView: View {
     /// Recommended routes for the currently selected destination — tap one to make it the
     /// route "Start Navigation" will launch. Mirrors what's drawn on the map: the picked
     /// route is violet and full-strength, the rest are dim.
+    /// A vertical list rather than a horizontal scroller. Alternates only matter in comparison
+    /// to each other, and the scroller clipped the second card mid-sentence — exactly the part
+    /// that distinguishes it, since the times are often identical.
     private var routeOptionsList: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("ROUTE OPTIONS")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(Color.kaidoDim)
-                Text("Your ride time · \(navigationViewModel.rideTimeProfile.paceDescription)")
-                    .font(.caption)
-                    .foregroundStyle(Color.kaidoVioletOnMap)
-                    .lineLimit(1)
+        VStack(spacing: 8) {
+            ForEach(navigationViewModel.routeOptions) { option in
+                Button {
+                    Task {
+                        await navigationViewModel.selectRoute(option)
+                        overviewSelectedRoute()
+                    }
+                } label: {
+                    routeOptionRow(option)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(routeAccessibilityLabel(for: option))
+                .accessibilityAddTraits(option.isMain ? [.isSelected] : [])
             }
+        }
+    }
 
-            ScrollView(.horizontal) {
-                HStack(spacing: 9) {
-                    ForEach(navigationViewModel.routeOptions) { option in
-                        Button {
-                            Task {
-                                await navigationViewModel.selectRoute(option)
-                                overviewSelectedRoute()
-                            }
-                        } label: {
-                            HStack(alignment: .top, spacing: 10) {
-                                Circle()
-                                    .fill(Self.routeColor(for: option, in: navigationViewModel.routeOptions))
-                                    .frame(width: 8, height: 8)
-                                    .padding(.top, 7)
+    private func routeOptionRow(_ option: RouteOption) -> some View {
+        HStack(alignment: .top, spacing: 11) {
+            // Matches the line drawn for this option on the map.
+            Circle()
+                .fill(Self.routeColor(for: option, in: navigationViewModel.routeOptions))
+                .frame(width: 8, height: 8)
+                .padding(.top, 7)
 
-                                VStack(alignment: .leading, spacing: 5) {
-                                    HStack(alignment: .firstTextBaseline, spacing: 7) {
-                                        Text(formattedDuration(option.personalizedTravelTime))
-                                            .font(.title3.weight(option.isMain ? .semibold : .medium))
-                                            .foregroundStyle(option.isMain ? Color.primary : Color.secondary)
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .firstTextBaseline, spacing: 7) {
+                    Text(formattedDuration(option.personalizedTravelTime))
+                        .font(.title3.weight(option.isMain ? .semibold : .medium))
+                        .foregroundStyle(option.isMain ? Color.primary : Color.secondary)
 
-                                        Text(formattedDistance(option.distanceMeters))
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
+                    Text(formattedDistance(option.distanceMeters))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
 
-                                        Spacer(minLength: 0)
+                    Spacer(minLength: 0)
 
-                                        if option.isMain {
-                                            Image(systemName: "checkmark.circle.fill")
-                                                .foregroundStyle(Color.kaidoViolet)
-                                        }
-                                    }
-
-                                    Text(option.stressProfile.headline)
-                                        .font(.caption.weight(.medium))
-                                        .foregroundStyle(quietColor(for: option.stressProfile.score))
-                                        .lineLimit(1)
-
-                                    Text(option.stressProfile.summary)
-                                        .font(.caption2)
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(1)
-                                }
-                            }
-                            .padding(11)
-                            .frame(width: 270, alignment: .leading)
-                            .background(
-                                option.isMain
-                                    ? Color.kaidoViolet.opacity(0.14)
-                                    : Color.kaidoInk.opacity(0.045),
-                                in: RoundedRectangle(cornerRadius: 13)
-                            )
-                            .overlay {
-                                RoundedRectangle(cornerRadius: 13)
-                                    .stroke(
-                                        option.isMain
-                                            ? Color.kaidoViolet.opacity(0.34)
-                                            : Color.kaidoInk.opacity(0.08),
-                                        lineWidth: 1
-                                    )
-                            }
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel(routeAccessibilityLabel(for: option))
+                    if option.isMain {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(Color.kaidoViolet)
                     }
                 }
+
+                Text(option.stressProfile.headline)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(quietColor(for: option.stressProfile.score))
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                RouteStressBar(
+                    quiet: option.stressProfile.quietFraction,
+                    mixed: option.stressProfile.mixedFraction,
+                    busy: option.stressProfile.busyFraction
+                )
             }
-            .scrollIndicators(.hidden)
         }
-    }
-
-    private func quietColor(for stress: Double) -> Color {
-        switch stress {
-        case ..<0.35: .statusGood
-        case ..<0.55: .statusCaution
-        default: .statusCritical
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            option.isMain ? Color.kaidoViolet.opacity(0.14) : Color.kaidoInk.opacity(0.045),
+            in: RoundedRectangle(cornerRadius: 13)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 13)
+                .stroke(
+                    option.isMain ? Color.kaidoViolet.opacity(0.34) : Color.kaidoInk.opacity(0.08),
+                    lineWidth: 1
+                )
         }
-    }
-
-    /// Violet remains the active route. Mapbox returns up to two cycling alternatives, which
-    /// receive blue and coral respectively — deliberately distinct from mint bike lanes.
-    ///
-    /// Static so `KaidoMapCanvas` (a separate view, so the map isn't rebuilt on every search
-    /// drawer drag frame) can share this without needing a reference back to this view.
-    static func routeColor(for option: RouteOption, in routeOptions: [RouteOption]) -> Color {
-        guard !option.isMain else { return .kaidoViolet }
-        let alternateIndex = routeOptions
-            .filter { !$0.isMain }
-            .firstIndex { $0.id == option.id } ?? 0
-
-        switch alternateIndex % 2 {
-        case 0: return .routeBlueOnMap
-        default: return .routeCoralOnMap
-        }
+        .contentShape(Rectangle())
     }
 
     private func routeAccessibilityLabel(for option: RouteOption) -> String {
