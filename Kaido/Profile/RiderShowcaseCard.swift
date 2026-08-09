@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// The Profile tab's hero card — mirrors ``BikeShowcaseCard``'s treatment (28pt gradient card,
 /// hairline violet stroke) for the rider's own identity rather than the bike's. There's no
@@ -10,7 +11,11 @@ struct RiderShowcaseCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .top, spacing: 14) {
-                RiderAvatarView(displayName: profile.displayName, size: 64)
+                RiderAvatarView(
+                    displayName: profile.displayName,
+                    photoImage: profile.photoData.flatMap(UIImage.init(data:)),
+                    size: 64
+                )
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(profile.displayName.isEmpty ? "Add your profile" : profile.displayName)

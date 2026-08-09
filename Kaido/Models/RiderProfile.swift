@@ -36,6 +36,16 @@ final class RiderProfile {
     var createdAt: Date = Date()
     var updatedAt: Date = Date()
 
+    /// The rider's profile photo, downsampled to a small square JPEG before it's ever stored here
+    /// (see `RiderProfileEditorView`). `.externalStorage` mirrors `Ride.recordedPathData` — SwiftData
+    /// maps it to a `CKAsset` under CloudKit instead of inlining it into the record.
+    ///
+    /// Deliberately `Data`, not `UIImage`: every other file in Models/ stays free of UIKit, and both
+    /// consuming views already need `UIImage` for display/encoding regardless, so the conversion lives
+    /// there instead of here.
+    @Attribute(.externalStorage)
+    var photoData: Data?
+
     init(
         displayName: String = "",
         homeCity: String = "",
