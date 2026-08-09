@@ -59,8 +59,9 @@ struct NavigationSessionView: UIViewControllerRepresentable {
     ) {
         Self.hideStockResumeButtons(in: viewController.view)
 
+        let sourceManager = MusicSourceManager.shared
         let barController = UIHostingController(
-            rootView: MediaPlayerBar(manager: MediaPlayerManager.shared)
+            rootView: MediaPlayerBar(source: sourceManager.selectedSource, manager: sourceManager.activeProvider)
         )
         barController.view.backgroundColor = .clear
         barController.view.translatesAutoresizingMaskIntoConstraints = false
@@ -199,7 +200,7 @@ struct NavigationSessionView: UIViewControllerRepresentable {
             }
         }
 
-        /// Mapbox's padding accounts for the glass banners but not the Spotify bar docked
+        /// Mapbox's padding accounts for the glass banners but not the Now Playing bar docked
         /// above them. Without the extra inset the follow camera parks the puck under that bar.
         @MainActor
         func refreshViewportPadding() {

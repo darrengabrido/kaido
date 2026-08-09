@@ -5,7 +5,7 @@ struct ProfileView: View {
     @Environment(AuthState.self) private var authState
     @Environment(\.modelContext) private var modelContext
     @Query private var riderProfiles: [RiderProfile]
-    private let mediaPlayerManager = MediaPlayerManager.shared
+    private let sourceManager = MusicSourceManager.shared
 
     var body: some View {
         NavigationStack {
@@ -13,7 +13,8 @@ struct ProfileView: View {
                 riderProfileSection
                 accountSection
                 rideTogetherSection
-                spotifySection
+                musicSourceSection
+                musicConnectionSection
                 diagnosticsSection
             }
             .navigationTitle("Profile")
@@ -104,36 +105,29 @@ struct ProfileView: View {
         }
     }
 
-    /// Lets you authorize Spotify before setting off — the Now Playing bar itself only appears
-    /// during turn-by-turn, and connecting there would bounce you out to Spotify mid-ride.
-    private var spotifySection: some View {
+    private var musicSourceSection: some View {
         Section {
-            HStack {
-                Image(systemName: mediaPlayerManager.isConnected ? "music.note.list" : "music.note")
-                    .foregroundStyle(mediaPlayerManager.isConnected ? Color.kaidoViolet : .secondary)
-                Text(mediaPlayerManager.isConnected ? "Connected" : "Not Connected")
-                    .lineLimit(1)
-                Spacer()
-                if mediaPlayerManager.isConnected {
-                    Button("Disconnect", role: .destructive) {
-                        mediaPlayerManager.disconnect()
-                    }
-                } else {
-                    Button("Connect") {
-                        mediaPlayerManager.connect()
-                    }
-                    .tint(.kaidoViolet)
+            Picker("Source", selection: Binding(
+                get: { sourceManager.selectedSource },
+                set: { sourceManager.selectedSource = $0 }
+            )) {
+                ForEach(MusicSource.allCases) { source in
+                    Label(source.title, systemImage: source.systemImage).tag(source)
                 }
             }
-            if let connectionError = mediaPlayerManager.connectionError {
-                Text(connectionError)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+            .pickerStyle(.inline)
         } header: {
-            Text("Spotify")
-        } footer: {
-            Text("Playback controls appear on screen during turn-by-turn navigation.")
+            Text("Music")
+        }
+    }
+
+    /// Lets you authorize the chosen source before setting off — the Now Playing bar itself only
+    /// appears during turn-by-turn, and connecting there would interrupt the ride.
+    @ViewBuilder
+    private var musicConnectionSection: some View {
+        switch sourceManager.selectedSource {
+        case .spotify: MusicConnectionRow(source: .spotify, manager: MediaPlayerManager.shared)
+        case .appleMusic: MusicConnectionRow(source: .appleMusic, manager: AppleMusicManager.shared)
         }
     }
 
@@ -144,6 +138,51 @@ struct ProfileView: View {
             }
         } footer: {
             Text("Sign-in and Spotify connection attempts are recorded here for troubleshooting.")
+        }
+    }
+}
+
+/// Connection status row shared by both music sources — status icon/text, connect/disconnect
+/// button, and any error text.
+private struct MusicConnectionRow: View {
+    let source: MusicSource
+    let manager: any NowPlayingProviding
+
+    private var connectLabel: String {
+        switch source {
+        case .spotify: "Connect"
+        case .appleMusic: "Enable"
+        }
+    }
+
+    var body: some View {
+        Section {
+            HStack {
+                Image(systemName: manager.isConnected ? "music.note.list" : "music.note")
+                    .foregroundStyle(manager.isConnected ? Color.kaidoViolet : .secondary)
+                Text(manager.isConnected ? "Connected" : "Not Connected")
+                    .lineLimit(1)
+                Spacer()
+                if manager.isConnected {
+                    Button("Disconnect", role: .destructive) {
+                        manager.disconnect()
+                    }
+                } else {
+                    Button(connectLabel) {
+                        manager.connect()
+                    }
+                    .tint(.kaidoViolet)
+                }
+            }
+            if let connectionError = manager.connectionError {
+                Text(connectionError)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        } header: {
+            Text(source.title)
+        } footer: {
+            Text("Playback controls appear on screen during turn-by-turn navigation.")
         }
     }
 }
