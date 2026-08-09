@@ -18,10 +18,12 @@ struct RiderProfileEditorView: View {
     @State private var photoChanged = false
     @State private var selectedPhotoItem: PhotosPickerItem?
     @State private var isLoadingPhoto = false
+    @State private var imagePendingCrop: UIImage?
+    @State private var isShowingCropSheet = false
     @State private var saveError: String?
 
     private static let avatarSize: CGFloat = 88
-    private static let maxPhotoDimension: CGFloat = 320
+    private static let workingImageDimension: CGFloat = 1024
     private static let jpegQuality: CGFloat = 0.85
 
     init(profile: RiderProfile) {
@@ -127,12 +129,29 @@ struct RiderProfileEditorView: View {
             Task {
                 defer { isLoadingPhoto = false }
                 guard let data = try? await newItem.loadTransferable(type: Data.self) else { return }
-                let resized = await Task.detached(priority: .userInitiated) {
-                    Self.downsampledImage(from: data, maxDimensionInPixels: Self.maxPhotoDimension)
+                let decoded = await Task.detached(priority: .userInitiated) {
+                    Self.downsampledImage(from: data, maxDimensionInPixels: Self.workingImageDimension)
                 }.value
-                guard let resized else { return }
-                photoImage = resized
-                photoChanged = true
+                guard let decoded else { return }
+                imagePendingCrop = decoded
+                isShowingCropSheet = true
+            }
+        }
+        .fullScreenCover(isPresented: $isShowingCropSheet) {
+            if let imagePendingCrop {
+                AvatarCropView(
+                    image: imagePendingCrop,
+                    onCancel: {
+                        isShowingCropSheet = false
+                        selectedPhotoItem = nil
+                    },
+                    onConfirm: { cropped in
+                        photoImage = cropped
+                        photoChanged = true
+                        isShowingCropSheet = false
+                        selectedPhotoItem = nil
+                    }
+                )
             }
         }
     }

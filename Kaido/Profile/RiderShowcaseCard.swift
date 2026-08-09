@@ -9,7 +9,7 @@ struct RiderShowcaseCard: View {
     let profile: RiderProfile
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top, spacing: 14) {
                 RiderAvatarView(
                     displayName: profile.displayName,
@@ -23,22 +23,31 @@ struct RiderShowcaseCard: View {
                         .foregroundStyle(Color.kaidoInk)
                         .lineLimit(1)
 
-                    if profile.displayName.isEmpty {
-                        Text("Tell Kaido a little about you")
-                            .font(.subheadline)
-                            .foregroundStyle(Color.kaidoDim)
-                            .lineLimit(1)
-                    } else {
-                        Label(subtitleText, systemImage: profile.experienceLevel.systemImage)
-                            .font(.subheadline)
-                            .foregroundStyle(Color.kaidoDim)
-                            .lineLimit(1)
-                    }
+                    Text(profile.displayName.isEmpty ? "Tell Kaido a little about you" : profile.experienceLevel.title)
+                        .font(.subheadline)
+                        .foregroundStyle(Color.kaidoDim)
+                        .lineLimit(1)
                 }
 
                 Spacer(minLength: 8)
 
                 editLink
+            }
+
+            if !profile.displayName.isEmpty {
+                HStack(spacing: 8) {
+                    experienceTag
+                    if !profile.homeCity.isEmpty {
+                        cityTag
+                    }
+                }
+
+                if !profile.bio.isEmpty {
+                    Text(profile.bio)
+                        .font(.subheadline)
+                        .foregroundStyle(Color.kaidoDim)
+                        .lineLimit(2)
+                }
             }
 
             Text("Your profile works whether you sign in or continue as a guest.")
@@ -76,6 +85,25 @@ struct RiderShowcaseCard: View {
         profile.homeCity.isEmpty
             ? profile.experienceLevel.title
             : "\(profile.homeCity) · \(profile.experienceLevel.title)"
+    }
+
+    private var experienceTag: some View {
+        Label(profile.experienceLevel.title, systemImage: profile.experienceLevel.systemImage)
+            .font(.caption.weight(.medium))
+            .foregroundStyle(Color.kaidoInk)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(Color.kaidoInk.opacity(0.1), in: Capsule())
+    }
+
+    private var cityTag: some View {
+        Label(profile.homeCity, systemImage: "mappin.circle")
+            .font(.caption.weight(.medium))
+            .foregroundStyle(Color.kaidoInk)
+            .lineLimit(1)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(Color.kaidoInk.opacity(0.1), in: Capsule())
     }
 
     private var editLink: some View {
