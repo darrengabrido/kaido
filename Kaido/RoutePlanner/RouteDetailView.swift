@@ -185,23 +185,17 @@ struct RouteDetailView: View {
         }
         .fullScreenCover(isPresented: $isPresentingNavigation) {
             if let navigationRoutes = navigationViewModel.navigationRoutes {
-                ZStack(alignment: .bottomTrailing) {
-                    NavigationSessionView(
-                        navigationRoutes: navigationRoutes,
-                        telemetry: bleManager.telemetry,
-                        rideTimeProfile: navigationViewModel.rideTimeProfile,
-                        groupRideSessionStore: rideTogetherSession.hasActiveRide ? rideTogetherSession : nil
-                    ) { _ in
-                        logRide()
-                        isPresentingNavigation = false
-                        navigationViewModel.clear()
-                    }
-                    .ignoresSafeArea()
-
-                    RideHUDView(telemetry: bleManager.telemetry)
-                        .padding(.trailing, 12)
-                        .padding(.bottom, 100)
+                NavigationSessionView(
+                    navigationRoutes: navigationRoutes,
+                    telemetry: bleManager.telemetry,
+                    rideTimeProfile: navigationViewModel.rideTimeProfile,
+                    groupRideSessionStore: rideTogetherSession.hasActiveRide ? rideTogetherSession : nil
+                ) { _ in
+                    logRide()
+                    isPresentingNavigation = false
+                    navigationViewModel.clear()
                 }
+                .ignoresSafeArea()
             }
         }
     }
