@@ -88,10 +88,16 @@ struct ContentView: View {
         guard let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, thumbnailOptions) else { return nil }
 
         let renderer = UIGraphicsImageRenderer(size: CGSize(width: diameter, height: diameter))
-        return renderer.image { _ in
+        let circularImage = renderer.image { _ in
             UIBezierPath(ovalIn: CGRect(x: 0, y: 0, width: diameter, height: diameter)).addClip()
             UIImage(cgImage: thumbnail).draw(in: CGRect(x: 0, y: 0, width: diameter, height: diameter))
         }
+
+        // SwiftUI's `.renderingMode(.original)` on the Image view doesn't reliably survive the
+        // bridge to UITabBarItem.image — the tab bar still template-renders it (a flat
+        // tint-colored circle) unless the UIImage itself is marked always-original at this,
+        // more authoritative, UIKit level.
+        return circularImage.withRenderingMode(.alwaysOriginal)
     }
 }
 
