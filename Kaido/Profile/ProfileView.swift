@@ -9,14 +9,23 @@ struct ProfileView: View {
 
     var body: some View {
         NavigationStack {
-            List {
-                riderProfileSection
-                accountSection
-                rideTogetherSection
-                musicSourceSection
-                musicConnectionSection
-                diagnosticsSection
+            ScrollView {
+                LazyVStack(spacing: 16) {
+                    if let profile = riderProfiles.first {
+                        RiderShowcaseCard(profile: profile)
+                    } else {
+                        ProgressView("Preparing your profile…")
+                            .frame(maxWidth: .infinity, minHeight: 140)
+                    }
+
+                    accountCard
+                    rideTogetherCard
+                    musicCard
+                    debugLogRow
+                }
+                .padding()
             }
+            .background(Color.kaidoMidnight)
             .navigationTitle("Profile")
             .task {
                 RiderProfileStore.ensureProfile(in: modelContext)
@@ -24,51 +33,13 @@ struct ProfileView: View {
         }
     }
 
-    // MARK: - Sections
+    // MARK: - Cards
 
-    private var riderProfileSection: some View {
-        Section {
-            if let profile = riderProfiles.first {
-                NavigationLink {
-                    RiderProfileEditorView(profile: profile)
-                } label: {
-                    HStack(spacing: 14) {
-                        RiderAvatarView(displayName: profile.displayName)
+    private var accountCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Account", systemImage: "person.text.rectangle")
+                .font(.headline)
 
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(profile.displayName.isEmpty ? "Add your profile" : profile.displayName)
-                                .font(.headline)
-
-                            if profile.displayName.isEmpty {
-                                Text("Tell Kaido a little about you")
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                            } else {
-                                Label(
-                                    profile.homeCity.isEmpty
-                                        ? profile.experienceLevel.title
-                                        : "\(profile.homeCity) · \(profile.experienceLevel.title)",
-                                    systemImage: profile.experienceLevel.systemImage
-                                )
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-                    .padding(.vertical, 4)
-                }
-            } else {
-                ProgressView("Preparing your profile…")
-            }
-        } header: {
-            Text("Rider Profile")
-        } footer: {
-            Text("Your profile works whether you sign in or continue as a guest.")
-        }
-    }
-
-    private var accountSection: some View {
-        Section {
             HStack {
                 Image(systemName: authState.isAuthenticated ? "person.crop.circle.fill" : "person.crop.circle")
                     .foregroundStyle(authState.isAuthenticated ? Color.kaidoViolet : .secondary)
@@ -86,59 +57,91 @@ struct ProfileView: View {
                     .tint(.kaidoViolet)
                 }
             }
-        } header: {
-            Text("Account")
         }
+        .profileCard()
     }
 
-    private var rideTogetherSection: some View {
-        Section {
+    private var rideTogetherCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Ride Together", systemImage: "bubble.left.and.bubble.right")
+                .font(.headline)
+
             NavigationLink {
                 GroupRideCustomReplySettingsView()
             } label: {
-                Label("Ride Together Quick Replies", systemImage: "bubble.left.and.bubble.right")
+                HStack {
+                    Text("Quick Replies")
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+                .contentShape(Rectangle())
             }
-        } header: {
-            Text("Ride Together")
-        } footer: {
+            .buttonStyle(.plain)
+
             Text("Customize the quick-reply buttons shown to your group during a ride.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
+        .profileCard()
     }
 
-    private var musicSourceSection: some View {
-        Section {
+    /// Lets you authorize the chosen source before setting off — the Now Playing bar itself only
+    /// appears during turn-by-turn, and connecting there would interrupt the ride.
+    private var musicCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Music", systemImage: "waveform")
+                .font(.headline)
+
             Picker("Source", selection: Binding(
                 get: { sourceManager.selectedSource },
                 set: { sourceManager.selectedSource = $0 }
             )) {
                 ForEach(MusicSource.allCases) { source in
-                    Label(source.title, systemImage: source.systemImage).tag(source)
+                    Text(source.title).tag(source)
                 }
             }
-            .pickerStyle(.inline)
-        } header: {
-            Text("Music")
+            .pickerStyle(.segmented)
+
+            MusicConnectionRow(source: sourceManager.selectedSource, manager: sourceManager.activeProvider)
         }
+        .profileCard()
     }
 
-    /// Lets you authorize the chosen source before setting off — the Now Playing bar itself only
-    /// appears during turn-by-turn, and connecting there would interrupt the ride.
-    @ViewBuilder
-    private var musicConnectionSection: some View {
-        switch sourceManager.selectedSource {
-        case .spotify: MusicConnectionRow(source: .spotify, manager: MediaPlayerManager.shared)
-        case .appleMusic: MusicConnectionRow(source: .appleMusic, manager: AppleMusicManager.shared)
-        }
-    }
-
-    private var diagnosticsSection: some View {
-        Section {
-            NavigationLink("Debug Log") {
+    private var debugLogRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            NavigationLink {
                 DebugLogView()
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "wrench.and.screwdriver")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    Text("Debug Log")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+                .contentShape(Rectangle())
             }
-        } footer: {
+            .buttonStyle(.plain)
+
             Text("Sign-in and Spotify connection attempts are recorded here for troubleshooting.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
         }
+        .profileCard()
+    }
+}
+
+private extension View {
+    func profileCard() -> some View {
+        padding(16)
+            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 20))
     }
 }
 
@@ -156,7 +159,7 @@ private struct MusicConnectionRow: View {
     }
 
     var body: some View {
-        Section {
+        VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Image(systemName: manager.isConnected ? "music.note.list" : "music.note")
                     .foregroundStyle(manager.isConnected ? Color.kaidoViolet : .secondary)
@@ -174,15 +177,16 @@ private struct MusicConnectionRow: View {
                     .tint(.kaidoViolet)
                 }
             }
+
             if let connectionError = manager.connectionError {
                 Text(connectionError)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-        } header: {
-            Text(source.title)
-        } footer: {
+
             Text("Playback controls appear on screen during turn-by-turn navigation.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 }

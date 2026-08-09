@@ -1,10 +1,15 @@
 import SwiftUI
 import SwiftData
+import ImageIO
+import UIKit
 
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(RideTogetherDeepLinkRouter.self) private var rideTogetherDeepLinkRouter
     @State private var locationManager = LocationManager()
+    @Query private var riderProfiles: [RiderProfile]
+
+    private static let tabIconDiameter: CGFloat = 26
 
     var body: some View {
         TabView {
@@ -27,7 +32,17 @@ struct ContentView: View {
 
             ProfileView()
                 .tabItem {
-                    Label("Profile", systemImage: "person.crop.circle")
+                    if let photoData = riderProfiles.first?.photoData,
+                       let icon = Self.circularTabIcon(from: photoData, diameter: Self.tabIconDiameter) {
+                        Label {
+                            Text("Profile")
+                        } icon: {
+                            Image(uiImage: icon)
+                                .renderingMode(.original)
+                        }
+                    } else {
+                        Label("Profile", systemImage: "person.crop.circle")
+                    }
                 }
         }
         .task {
@@ -53,6 +68,47 @@ struct ContentView: View {
                 if !isPresented { rideTogetherDeepLinkRouter.clearPendingInvite() }
             }
         )
+    }
+
+    /// Tab bar images render as a template mask by default (so the system can tint them for
+    /// selection state) — a `.renderingMode(.original)` photo needs to already be exactly the
+    /// right size, since a tab item doesn't apply `.resizable()`/`.frame()` the way an inline
+    /// `Image` would. `photoData` is already a clean, correctly-framed 320pt square (see
+    /// `AvatarCropView`), so this just needs to shrink and circle-clip it, not re-derive any
+    /// fill/center-crop math.
+    private static func circularTabIcon(from photoData: Data, diameter: CGFloat) -> UIImage? {
+        // kCGImageSourceThumbnailMaxPixelSize wants raw pixels, not points — on a 3x Retina
+        // screen, 26pt of on-screen space is 78 actual pixels. Requesting only `diameter` pixels
+        // of source detail and then stretching it to fill a Retina-scale render buffer is exactly
+        // what produced the blur.
+        let scale = UIScreen.main.scale
+        let pixelDiameter = diameter * scale
+
+        let sourceOptions = [kCGImageSourceShouldCache: false] as CFDictionary
+        guard let source = CGImageSourceCreateWithData(photoData as CFData, sourceOptions) else { return nil }
+
+        let thumbnailOptions = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceThumbnailMaxPixelSize: pixelDiameter
+        ] as CFDictionary
+        guard let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, thumbnailOptions) else { return nil }
+
+        // Match the render buffer's own scale to the screen too, so the resulting UIImage is
+        // tagged as Retina-resolution rather than defaulting to a soft 1x buffer.
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = scale
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: diameter, height: diameter), format: format)
+        let circularImage = renderer.image { _ in
+            UIBezierPath(ovalIn: CGRect(x: 0, y: 0, width: diameter, height: diameter)).addClip()
+            UIImage(cgImage: thumbnail).draw(in: CGRect(x: 0, y: 0, width: diameter, height: diameter))
+        }
+
+        // SwiftUI's `.renderingMode(.original)` on the Image view doesn't reliably survive the
+        // bridge to UITabBarItem.image — the tab bar still template-renders it (a flat
+        // tint-colored circle) unless the UIImage itself is marked always-original at this,
+        // more authoritative, UIKit level.
+        return circularImage.withRenderingMode(.alwaysOriginal)
     }
 }
 

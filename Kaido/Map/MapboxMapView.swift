@@ -2,6 +2,7 @@ import SwiftUI
 import SwiftData
 import MapboxMaps
 import CoreLocation
+import UIKit
 
 extension MapStyle {
     static let kaidoNight = MapStyle.standard(lightPreset: .night)
@@ -15,6 +16,7 @@ struct MapboxMapView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \BikeProfile.lastConnectedAt, order: .reverse) private var bikeProfiles: [BikeProfile]
     @Query(sort: \SavedPlace.createdAt) private var savedPlaces: [SavedPlace]
+    @Query private var riderProfiles: [RiderProfile]
 
     @State private var viewport: Viewport = MapViewportFollow.live(bottomPadding: 420)
     @State private var showBikeLanes = true
@@ -431,19 +433,22 @@ struct MapboxMapView: View {
 
     /// Opens the existing account screen. Presented from the drawer rather than this view
     /// because the ZStack's one sheet slot is taken by the display-name prompt.
+    ///
+    /// Reuses `RiderAvatarView` rather than a generic glyph so this button shows the rider's own
+    /// photo once they've set one — same avatar, same initials-fallback, as the Profile tab itself.
     private var profileButton: some View {
         Button {
             isPresentingProfile = true
         } label: {
-            Image(systemName: "person.fill")
-                .font(.system(size: 17, weight: .medium))
-                .foregroundStyle(Color.kaidoInk)
-                .frame(width: 48, height: 48)
-                .background(Color.kaidoInk.opacity(0.08), in: Circle())
-                .overlay {
-                    Circle().stroke(Color.kaidoInk.opacity(0.08), lineWidth: 1)
-                }
-                .contentShape(Circle())
+            RiderAvatarView(
+                displayName: riderProfiles.first?.displayName ?? "",
+                photoImage: riderProfiles.first?.photoData.flatMap(UIImage.init(data:)),
+                size: 48
+            )
+            .overlay {
+                Circle().stroke(Color.kaidoInk.opacity(0.08), lineWidth: 1)
+            }
+            .contentShape(Circle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Profile")
