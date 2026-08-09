@@ -464,6 +464,25 @@ enum PostgresDate {
     }()
 
     static func parse(_ string: String) -> Date? {
-        withFractionalSeconds.date(from: string) ?? withoutFractionalSeconds.date(from: string)
+        if let date = withFractionalSeconds.date(from: string) { return date }
+        if let date = withoutFractionalSeconds.date(from: string) { return date }
+        // Postgres's `now()` almost always lands on 6-digit microsecond precision (trailing
+        // zeros trimmed, so anywhere from 1 to 6 digits) — `ISO8601DateFormatter`'s
+        // fractional-seconds mode only ever accepts exactly 3, so a real timestamptz value
+        // fails both formatters above nearly every time. Pad/truncate to milliseconds and retry
+        // rather than reject a well-formed Postgres timestamp outright.
+        guard let normalized = normalizedToMilliseconds(string) else { return nil }
+        return withFractionalSeconds.date(from: normalized)
+    }
+
+    private static func normalizedToMilliseconds(_ string: String) -> String? {
+        guard let dotIndex = string.firstIndex(of: ".") else { return nil }
+        let digitsStart = string.index(after: dotIndex)
+        var digitsEnd = digitsStart
+        while digitsEnd < string.endIndex, string[digitsEnd].isNumber {
+            digitsEnd = string.index(after: digitsEnd)
+        }
+        let milliseconds = String((string[digitsStart..<digitsEnd] + "000").prefix(3))
+        return string.replacingCharacters(in: digitsStart..<digitsEnd, with: milliseconds)
     }
 }
