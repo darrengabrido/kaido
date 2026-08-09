@@ -49,10 +49,6 @@ struct RiderShowcaseCard: View {
                         .lineLimit(2)
                 }
             }
-
-            Text("Your profile works whether you sign in or continue as a guest.")
-                .font(.caption2)
-                .foregroundStyle(Color.kaidoDim)
         }
         .padding(18)
         .background {
