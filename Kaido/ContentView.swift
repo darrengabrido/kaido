@@ -1,10 +1,15 @@
 import SwiftUI
 import SwiftData
+import ImageIO
+import UIKit
 
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(RideTogetherDeepLinkRouter.self) private var rideTogetherDeepLinkRouter
     @State private var locationManager = LocationManager()
+    @Query private var riderProfiles: [RiderProfile]
+
+    private static let tabIconDiameter: CGFloat = 26
 
     var body: some View {
         TabView {
@@ -27,7 +32,17 @@ struct ContentView: View {
 
             ProfileView()
                 .tabItem {
-                    Label("Profile", systemImage: "person.crop.circle")
+                    if let photoData = riderProfiles.first?.photoData,
+                       let icon = Self.circularTabIcon(from: photoData, diameter: Self.tabIconDiameter) {
+                        Label {
+                            Text("Profile")
+                        } icon: {
+                            Image(uiImage: icon)
+                                .renderingMode(.original)
+                        }
+                    } else {
+                        Label("Profile", systemImage: "person.crop.circle")
+                    }
                 }
         }
         .task {
@@ -53,6 +68,30 @@ struct ContentView: View {
                 if !isPresented { rideTogetherDeepLinkRouter.clearPendingInvite() }
             }
         )
+    }
+
+    /// Tab bar images render as a template mask by default (so the system can tint them for
+    /// selection state) — a `.renderingMode(.original)` photo needs to already be exactly the
+    /// right size, since a tab item doesn't apply `.resizable()`/`.frame()` the way an inline
+    /// `Image` would. `photoData` is already a clean, correctly-framed 320pt square (see
+    /// `AvatarCropView`), so this just needs to shrink and circle-clip it, not re-derive any
+    /// fill/center-crop math.
+    private static func circularTabIcon(from photoData: Data, diameter: CGFloat) -> UIImage? {
+        let sourceOptions = [kCGImageSourceShouldCache: false] as CFDictionary
+        guard let source = CGImageSourceCreateWithData(photoData as CFData, sourceOptions) else { return nil }
+
+        let thumbnailOptions = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceThumbnailMaxPixelSize: diameter
+        ] as CFDictionary
+        guard let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, thumbnailOptions) else { return nil }
+
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: diameter, height: diameter))
+        return renderer.image { _ in
+            UIBezierPath(ovalIn: CGRect(x: 0, y: 0, width: diameter, height: diameter)).addClip()
+            UIImage(cgImage: thumbnail).draw(in: CGRect(x: 0, y: 0, width: diameter, height: diameter))
+        }
     }
 }
 
