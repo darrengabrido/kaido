@@ -18,8 +18,9 @@ struct RiderProfileEditorView: View {
     @State private var photoChanged = false
     @State private var selectedPhotoItem: PhotosPickerItem?
     @State private var isLoadingPhoto = false
-    @State private var imagePendingCrop: UIImage?
-    @State private var isShowingCropSheet = false
+    @State private var imageBeingCropped: UIImage?
+    @State private var isShowingPhotoOptions = false
+    @State private var isPresentingPhotoPicker = false
     @State private var saveError: String?
 
     private static let avatarSize: CGFloat = 88
@@ -133,22 +134,26 @@ struct RiderProfileEditorView: View {
                     Self.downsampledImage(from: data, maxDimensionInPixels: Self.workingImageDimension)
                 }.value
                 guard let decoded else { return }
-                imagePendingCrop = decoded
-                isShowingCropSheet = true
+                imageBeingCropped = decoded
             }
         }
-        .fullScreenCover(isPresented: $isShowingCropSheet) {
-            if let imagePendingCrop {
+        .fullScreenCover(
+            isPresented: Binding(
+                get: { imageBeingCropped != nil },
+                set: { if !$0 { imageBeingCropped = nil } }
+            )
+        ) {
+            if let imageBeingCropped {
                 AvatarCropView(
-                    image: imagePendingCrop,
+                    image: imageBeingCropped,
                     onCancel: {
-                        isShowingCropSheet = false
+                        self.imageBeingCropped = nil
                         selectedPhotoItem = nil
                     },
                     onConfirm: { cropped in
                         photoImage = cropped
                         photoChanged = true
-                        isShowingCropSheet = false
+                        self.imageBeingCropped = nil
                         selectedPhotoItem = nil
                     }
                 )
@@ -157,7 +162,13 @@ struct RiderProfileEditorView: View {
     }
 
     private var photoPicker: some View {
-        PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
+        Button {
+            if photoImage != nil {
+                isShowingPhotoOptions = true
+            } else {
+                isPresentingPhotoPicker = true
+            }
+        } label: {
             ZStack(alignment: .bottomTrailing) {
                 RiderAvatarView(displayName: displayName, photoImage: photoImage, size: Self.avatarSize)
                 if isLoadingPhoto {
@@ -173,7 +184,17 @@ struct RiderProfileEditorView: View {
         .buttonStyle(.plain)
         .disabled(isLoadingPhoto)
         .accessibilityLabel(photoImage == nil ? "Add profile photo" : "Change profile photo")
-        .accessibilityHint("Opens your photo library")
+        .accessibilityHint(photoImage == nil ? "Opens your photo library" : "Edit or replace your profile photo")
+        .confirmationDialog("Profile Photo", isPresented: $isShowingPhotoOptions, titleVisibility: .visible) {
+            Button("Edit Photo") {
+                imageBeingCropped = photoImage
+            }
+            Button("Choose New Photo") {
+                isPresentingPhotoPicker = true
+            }
+            Button("Cancel", role: .cancel) {}
+        }
+        .photosPicker(isPresented: $isPresentingPhotoPicker, selection: $selectedPhotoItem, matching: .images)
     }
 
     private var editBadge: some View {
