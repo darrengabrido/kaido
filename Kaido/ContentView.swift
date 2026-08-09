@@ -77,17 +77,28 @@ struct ContentView: View {
     /// `AvatarCropView`), so this just needs to shrink and circle-clip it, not re-derive any
     /// fill/center-crop math.
     private static func circularTabIcon(from photoData: Data, diameter: CGFloat) -> UIImage? {
+        // kCGImageSourceThumbnailMaxPixelSize wants raw pixels, not points — on a 3x Retina
+        // screen, 26pt of on-screen space is 78 actual pixels. Requesting only `diameter` pixels
+        // of source detail and then stretching it to fill a Retina-scale render buffer is exactly
+        // what produced the blur.
+        let scale = UIScreen.main.scale
+        let pixelDiameter = diameter * scale
+
         let sourceOptions = [kCGImageSourceShouldCache: false] as CFDictionary
         guard let source = CGImageSourceCreateWithData(photoData as CFData, sourceOptions) else { return nil }
 
         let thumbnailOptions = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceShouldCacheImmediately: true,
-            kCGImageSourceThumbnailMaxPixelSize: diameter
+            kCGImageSourceThumbnailMaxPixelSize: pixelDiameter
         ] as CFDictionary
         guard let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, thumbnailOptions) else { return nil }
 
-        let renderer = UIGraphicsImageRenderer(size: CGSize(width: diameter, height: diameter))
+        // Match the render buffer's own scale to the screen too, so the resulting UIImage is
+        // tagged as Retina-resolution rather than defaulting to a soft 1x buffer.
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = scale
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: diameter, height: diameter), format: format)
         let circularImage = renderer.image { _ in
             UIBezierPath(ovalIn: CGRect(x: 0, y: 0, width: diameter, height: diameter)).addClip()
             UIImage(cgImage: thumbnail).draw(in: CGRect(x: 0, y: 0, width: diameter, height: diameter))
