@@ -19,6 +19,11 @@ enum MusicSource: String, CaseIterable, Identifiable {
         case .appleMusic: "applelogo"
         }
     }
+
+    /// Short status line for settings / accessibility copy.
+    func statusLabel(isConnected: Bool) -> String {
+        isConnected ? "\(title) Connected" : "\(title) Not Connected"
+    }
 }
 
 /// Tracks which music source drives the Now Playing bar. A plain singleton (not

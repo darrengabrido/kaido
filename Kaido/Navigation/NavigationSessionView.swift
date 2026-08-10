@@ -59,9 +59,8 @@ struct NavigationSessionView: UIViewControllerRepresentable {
     ) {
         Self.hideStockResumeButtons(in: viewController.view)
 
-        let sourceManager = MusicSourceManager.shared
         let barController = UIHostingController(
-            rootView: MediaPlayerBar(source: sourceManager.selectedSource, manager: sourceManager.activeProvider)
+            rootView: MediaPlayerBar()
         )
         barController.view.backgroundColor = .clear
         barController.view.translatesAutoresizingMaskIntoConstraints = false

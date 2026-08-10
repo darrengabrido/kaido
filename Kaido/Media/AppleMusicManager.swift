@@ -22,6 +22,16 @@ final class AppleMusicManager {
     private(set) var artwork: UIImage?
     private(set) var connectionError: String?
 
+    /// Seconds. Unlike Spotify's App Remote, `currentPlaybackTime` is always live, so this is
+    /// just polled by `positionTicker` rather than interpolated.
+    private(set) var playbackPosition: TimeInterval = 0
+    private(set) var trackDuration: TimeInterval = 0
+    private(set) var isShuffleEnabled = false
+    private(set) var repeatMode: NowPlayingRepeatMode = .off
+
+    @ObservationIgnored
+    private var positionTicker: Timer?
+
     var hasNowPlayingItem: Bool { trackTitle != nil }
 
     private init() {
@@ -62,6 +72,28 @@ final class AppleMusicManager {
 
     func skipToPrevious() {
         player.skipToPreviousItem()
+    }
+
+    func seek(to position: TimeInterval) {
+        let clamped = min(max(position, 0), trackDuration)
+        player.currentPlaybackTime = clamped
+        playbackPosition = clamped
+    }
+
+    func toggleShuffle() {
+        player.shuffleMode = isShuffleEnabled ? .off : .songs
+        isShuffleEnabled = player.shuffleMode != .off
+    }
+
+    func cycleRepeatMode() {
+        let next: NowPlayingRepeatMode
+        switch repeatMode {
+        case .off: next = .all
+        case .all: next = .one
+        case .one: next = .off
+        }
+        player.repeatMode = Self.appleRepeatMode(from: next)
+        repeatMode = next
     }
 
     // MARK: - Private
@@ -115,11 +147,16 @@ final class AppleMusicManager {
         nowPlayingObserver = nil
         playbackStateObserver = nil
         player.endGeneratingPlaybackNotifications()
+        stopPositionTicker()
 
         isPlaying = false
         trackTitle = nil
         artistName = nil
         artwork = nil
+        playbackPosition = 0
+        trackDuration = 0
+        isShuffleEnabled = false
+        repeatMode = .off
     }
 
     private func refresh() {
@@ -128,6 +165,51 @@ final class AppleMusicManager {
         trackTitle = item?.title
         artistName = item?.artist
         artwork = item?.artwork?.image(at: CGSize(width: 80, height: 80))
+        trackDuration = item?.playbackDuration ?? 0
+        isShuffleEnabled = player.shuffleMode != .off
+        repeatMode = Self.repeatMode(from: player.repeatMode)
+        updatePlaybackPosition()
+
+        if isPlaying {
+            startPositionTicker()
+        } else {
+            stopPositionTicker()
+        }
+    }
+
+    private func updatePlaybackPosition() {
+        let time = player.currentPlaybackTime
+        playbackPosition = time.isFinite && time >= 0 ? time : 0
+    }
+
+    private func startPositionTicker() {
+        guard positionTicker == nil else { return }
+        positionTicker = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.updatePlaybackPosition() }
+        }
+    }
+
+    private func stopPositionTicker() {
+        positionTicker?.invalidate()
+        positionTicker = nil
+    }
+
+    private static func repeatMode(from mode: MPMusicRepeatMode) -> NowPlayingRepeatMode {
+        switch mode {
+        case .none: .off
+        case .one: .one
+        case .all: .all
+        case .default: .off
+        @unknown default: .off
+        }
+    }
+
+    private static func appleRepeatMode(from mode: NowPlayingRepeatMode) -> MPMusicRepeatMode {
+        switch mode {
+        case .off: .none
+        case .one: .one
+        case .all: .all
+        }
     }
 }
 
