@@ -3,7 +3,8 @@ import SwiftUI
 /// Collapsed Now Playing bar shown during live navigation — docked just above Mapbox's bottom
 /// banner. See `NavigationSessionView.addMediaPlayerBar`.
 struct MediaPlayerBar: View {
-    let manager: MediaPlayerManager
+    let source: MusicSource
+    let manager: any NowPlayingProviding
 
     /// Bumped on every transport tap to drive `.sensoryFeedback` below — a rider glancing at
     /// (or blindly tapping) a handlebar-mounted phone benefits from a tactile "that registered"
@@ -35,6 +36,13 @@ struct MediaPlayerBar: View {
         .sensoryFeedback(.impact(weight: .light), trigger: hapticTick)
     }
 
+    private var connectTitle: String {
+        switch source {
+        case .spotify: "Connect Spotify"
+        case .appleMusic: "Enable Apple Music"
+        }
+    }
+
     private var connectPrompt: some View {
         Button {
             manager.connect()
@@ -45,7 +53,7 @@ struct MediaPlayerBar: View {
                     .frame(width: 40, height: 40)
 
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("Connect Spotify")
+                    Text(connectTitle)
                         .font(.subheadline.weight(.medium))
                     if let connectionError = manager.connectionError {
                         Text(connectionError)
@@ -175,7 +183,7 @@ struct MediaPlayerBar: View {
 }
 
 #Preview {
-    MediaPlayerBar(manager: MediaPlayerManager.shared)
+    MediaPlayerBar(source: .spotify, manager: MediaPlayerManager.shared)
         .padding()
         .background(Color.kaidoMidnight)
 }
