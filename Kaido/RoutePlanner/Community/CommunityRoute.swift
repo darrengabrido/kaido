@@ -1,11 +1,22 @@
 import Foundation
 import CoreLocation
 
-/// A route shown in the Routes tab's "Community" section. Distinct from the local, SwiftData-backed
-/// `Route` — this is a plain value type so it can come from a bundled catalog today
-/// (`CuratedCommunityRoutes`) and a backend later without any model changes. "Add to My Routes"
-/// (see `CommunityRouteDetailView`) is what bridges one of these into a local `Route`/`Waypoint`
-/// pair, at which point it behaves exactly like any other saved route.
+/// Lifecycle state of a community route. Backed by the `community_routes.status` column.
+/// Nothing sets `.removed` today — `remove(routeId:)` on `CommunityRouteService` hard-deletes the
+/// row — but the case exists so a future moderation pass has somewhere to land without a schema
+/// change.
+enum CommunityRouteStatus: String, Codable, Sendable, Hashable {
+    case published
+    case removed
+}
+
+/// A route shown in the Routes tab's "Community" section, mirroring the `community_routes` table
+/// exactly (see `supabase/migrations/0002_community_routes.sql`). Distinct from the local,
+/// SwiftData-backed `Route` — this is a plain value type so it round-trips through
+/// `SupabaseCommunityRouteService` (and, for the bundled seed catalog, `CuratedCommunityRoutes`)
+/// without any persistence-framework dependency. "Add to My Routes" (see
+/// `CommunityRouteDetailView`) is what bridges one of these into a local `Route`/`Waypoint` pair,
+/// at which point it behaves exactly like any other saved route.
 struct CommunityRoute: Identifiable, Codable, Sendable, Hashable {
     struct Waypoint: Codable, Sendable, Hashable {
         var latitude: Double
@@ -18,17 +29,18 @@ struct CommunityRoute: Identifiable, Codable, Sendable, Hashable {
     }
 
     let id: UUID
+    let authorUserId: UUID
+    var authorDisplayName: String
     var name: String
     var description: String?
-    /// Free-text location context (e.g. "San Francisco, CA") — there's no map-based "near me"
-    /// filter yet, so this is how a rider tells at a glance whether a route is even ridable for them.
-    var areaName: String?
-    /// Who put this route together. Always "Kaido" for the bundled catalog today; kept as a field
-    /// (rather than hardcoded in the UI) so a future admin- or user-curated source can vary it.
-    var curatorName: String
     var distanceMeters: Double
     var elevationGainMeters: Double
     var waypoints: [Waypoint]
+    var startLatitude: Double
+    var startLongitude: Double
+    var status: CommunityRouteStatus
+    let createdAt: Date
+    var updatedAt: Date
 
     var orderedWaypoints: [Waypoint] {
         waypoints.sorted { $0.order < $1.order }
