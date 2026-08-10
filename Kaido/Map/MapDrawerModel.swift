@@ -65,10 +65,25 @@ final class MapDrawerModel {
 
     /// The drawer's top edge sits this far down the usable height, so the fraction is measured
     /// from the top of the screen and the drawer occupies what's left below it.
-    private static let mediumTopFraction: CGFloat = 0.40
+    private static let defaultMediumTopFraction: CGFloat = 0.40
+
+    /// Place details uses a higher fraction so the resting card leaves more map visible.
+    /// `nil` restores the search/browse medium height.
+    var mediumTopFractionOverride: CGFloat? {
+        didSet {
+            guard oldValue != mediumTopFractionOverride, !isDragging else { return }
+            if detent == .medium {
+                height = mediumHeight
+            }
+        }
+    }
+
+    private var mediumTopFraction: CGFloat {
+        mediumTopFractionOverride ?? Self.defaultMediumTopFraction
+    }
 
     var mediumHeight: CGFloat {
-        max(compactHeight, usableHeight * (1 - Self.mediumTopFraction))
+        max(compactHeight, usableHeight * (1 - mediumTopFraction))
     }
 
     /// Rests immediately below the top safe area.

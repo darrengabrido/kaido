@@ -15,6 +15,7 @@ struct KaidoMapCanvas: View {
     let showBikeLanes: Bool
     let selectedDestination: SearchResult?
     let routeOptions: [RouteOption]
+    let onSelectRoute: (RouteOption) -> Void
 
     var body: some View {
         Map(viewport: $viewport) {
@@ -54,6 +55,8 @@ struct KaidoMapCanvas: View {
             if let mainRoute = routeOptions.first(where: { $0.isMain && $0.coordinates.count > 1 }) {
                 RouteGlowPolyline(coordinates: mainRoute.coordinates)
             }
+
+            RouteETABadgeAnnotations(routeOptions: routeOptions, onSelect: onSelectRoute)
         }
         .mapStyle(.kaidoNight)
         .ornamentOptions(OrnamentOptions(

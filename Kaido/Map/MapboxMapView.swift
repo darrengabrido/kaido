@@ -34,7 +34,19 @@ struct MapboxMapView: View {
     /// record, so the control is never decorative.
     @State private var speechService = SpeechQuickMessageService()
     @State private var speechErrorMessage: String?
-    @State private var isPresentingProfile = false
+    /// A view honours only one `.sheet`, so the drawer's two destinations share one, keyed by
+    /// this rather than by a pair of booleans that would silently fight each other.
+    @State private var presentedSheet: DrawerSheet?
+    /// Collapsed by default so the resting card is Apple Maps–compact (summary + GO). Expands
+    /// in place for light alternates and a nested Route details disclosure. Reset on every new
+    /// destination.
+    @State private var isRouteDetailsExpanded = false
+    /// Nested under the expanded card — Steps + Hills live here so they aren't one long dump.
+    @State private var isTurnDetailsExpanded = false
+    /// True while the origin field owns the drawer's search UI. `selectedDestination` stays set
+    /// throughout — this is a transient overlay on the destination-picked state, not a return to
+    /// the no-destination search screen.
+    @State private var isEditingOrigin = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     // Ride Together
@@ -44,6 +56,20 @@ struct MapboxMapView: View {
     @State private var pendingRawInviteToken: String?
     @State private var rideTogetherErrorMessage: String?
     @State private var isCreatingRideTogether = false
+
+    /// What the drawer can present. The Ride Together display-name prompt is a separate sheet on
+    /// the screen's ZStack, which is a different view and so doesn't contend with these.
+    private enum DrawerSheet: Identifiable {
+        case profile
+        case bike(BikeProfile)
+
+        var id: String {
+            switch self {
+            case .profile: "profile"
+            case .bike(let profile): "bike-\(profile.persistentModelID.hashValue)"
+            }
+        }
+    }
 
     private var isFollowingUser: Bool {
         viewport.followPuck != nil
@@ -80,7 +106,14 @@ struct MapboxMapView: View {
                 viewport: $viewport,
                 showBikeLanes: showBikeLanes,
                 selectedDestination: searchViewModel.selectedDestination,
-                routeOptions: navigationViewModel.routeOptions
+                routeOptions: navigationViewModel.routeOptions,
+                onSelectRoute: { option in
+                    Task {
+                        await navigationViewModel.selectRoute(option)
+                        overviewSelectedRoute()
+                        expandRouteDetails()
+                    }
+                }
             )
 
             // Recenter sits above the cycling menu so riders can recover follow after a pan.
@@ -192,6 +225,12 @@ struct MapboxMapView: View {
         .onChange(of: searchViewModel.query) { _, _ in
             searchViewModel.queryDidChange()
         }
+        .onChange(of: searchViewModel.selectedDestination?.id) { _, destinationID in
+            isRouteDetailsExpanded = false
+            isTurnDetailsExpanded = false
+            // Shorter medium detent while a place card is up so the map stays the hero.
+            drawerModel.mediumTopFractionOverride = destinationID == nil ? nil : 0.55
+        }
         // Live dictation streams straight into the query, so debounce, suggestions, and results
         // behave exactly as they do for typing.
         .onChange(of: speechService.liveTranscript) { _, transcript in
@@ -262,16 +301,18 @@ struct MapboxMapView: View {
         }
     }
 
-    private var searchBar: some View {
+    /// Shared chrome for both the destination field and the origin field — same pill, same
+    /// trailing controls, only the placeholder and what "clear" means differ per call site.
+    private func searchBar(placeholder: String, onClear: @escaping () -> Void) -> some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(.secondary)
-            TextField("Search for a destination", text: $searchViewModel.query)
+            TextField(placeholder, text: $searchViewModel.query)
                 .focused($isSearchFocused)
                 .submitLabel(.search)
             if !searchViewModel.query.isEmpty {
                 Button {
-                    clearDestination()
+                    onClear()
                     isSearchFocused = false
                 } label: {
                     Image(systemName: "xmark.circle.fill")
@@ -307,11 +348,13 @@ struct MapboxMapView: View {
         }
     }
 
-    private var resultsList: some View {
+    /// Reused for both destination results and origin results — `onSelect` is the only thing
+    /// that differs between the two contexts.
+    private func resultsList(onSelect: @escaping (SearchResult) -> Void) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(searchViewModel.results) { result in
                 Button {
-                    selectDestination(result)
+                    onSelect(result)
                 } label: {
                     HStack(spacing: 12) {
                         Image(systemName: result.iconName)
@@ -386,17 +429,24 @@ struct MapboxMapView: View {
             model: drawerModel,
             reduceMotion: reduceMotion
         ) {
-            if let destination = searchViewModel.selectedDestination {
+            if isEditingOrigin {
+                originSearchHeader
+            } else if let destination = searchViewModel.selectedDestination {
                 placeDetailsSheetHeader(destination)
             } else {
                 mapSearchSheetHeader
             }
         } content: {
-            if let destination = searchViewModel.selectedDestination {
-                placeDetailsContent(destination)
+            if isEditingOrigin {
+                originSearchContent
                     .padding(.horizontal, 18)
                     .padding(.top, 14)
-                    .padding(.bottom, 18)
+                    .padding(.bottom, 24)
+            } else if let destination = searchViewModel.selectedDestination {
+                placeDetailsContent(destination)
+                    .padding(.horizontal, 18)
+                    .padding(.top, 8)
+                    .padding(.bottom, 14)
             } else {
                 mapSearchContent
                     .padding(.horizontal, 18)
@@ -410,8 +460,27 @@ struct MapboxMapView: View {
         .ignoresSafeArea(.keyboard)
         // Attached to the drawer rather than to the screen's ZStack, whose one sheet slot
         // already belongs to the Ride Together display-name prompt.
-        .sheet(isPresented: $isPresentingProfile) {
-            NavigationStack { ProfileView() }
+        .sheet(item: $presentedSheet) { sheet in
+            switch sheet {
+            case .profile:
+                NavigationStack { ProfileView() }
+            case .bike(let bike):
+                BikeProfileEditorView(
+                    profile: bike,
+                    onSave: {
+                        BikeProfileStore.activate(bike, among: bikeProfiles)
+                        bleManager.apply(profile: bike)
+                        try? modelContext.save()
+                        // Route times are derived from this, so re-price them immediately.
+                        navigationViewModel.updateRideTimeProfile(activeRideTimeProfile)
+                    },
+                    onDelete: {
+                        modelContext.delete(bike)
+                        try? modelContext.save()
+                        navigationViewModel.updateRideTimeProfile(activeRideTimeProfile)
+                    }
+                )
+            }
         }
     }
 
@@ -422,8 +491,32 @@ struct MapboxMapView: View {
             drawerGrabber
 
             HStack(spacing: 10) {
-                searchBar
+                searchBar(placeholder: "Search for a destination") { clearDestination() }
                 profileButton
+            }
+            .padding(.horizontal, 18)
+            .padding(.bottom, 14)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    /// The origin field's own header, layered over the destination-picked state rather than
+    /// replacing it — `selectedDestination` stays set the whole time.
+    private var originSearchHeader: some View {
+        VStack(spacing: 0) {
+            drawerGrabber
+
+            HStack(spacing: 10) {
+                searchBar(placeholder: "Search for a starting point") { searchViewModel.resetQuery() }
+
+                Button {
+                    endEditingOrigin()
+                } label: {
+                    Text("Cancel")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(Color.kaidoVioletOnMap)
+                }
+                .buttonStyle(.plain)
             }
             .padding(.horizontal, 18)
             .padding(.bottom, 14)
@@ -438,7 +531,7 @@ struct MapboxMapView: View {
     /// photo once they've set one — same avatar, same initials-fallback, as the Profile tab itself.
     private var profileButton: some View {
         Button {
-            isPresentingProfile = true
+            presentedSheet = .profile
         } label: {
             RiderAvatarView(
                 displayName: riderProfiles.first?.displayName ?? "",
@@ -465,7 +558,7 @@ struct MapboxMapView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             } else if !searchViewModel.results.isEmpty {
-                resultsList
+                resultsList(onSelect: selectDestination)
             } else if let message = speechErrorMessage ?? searchViewModel.searchError {
                 Text(message)
                     .font(.caption)
@@ -492,6 +585,57 @@ struct MapboxMapView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Origin search's own content — no recents/discover/saved places, since those exist to
+    /// help pick a destination. "Current Location" pinned above the results is what reverting
+    /// to the implicit default looks like.
+    private var originSearchContent: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            currentLocationRow
+
+            if searchViewModel.isSearching {
+                HStack(spacing: 10) {
+                    ProgressView()
+                    Text("Searching…")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else if !searchViewModel.results.isEmpty {
+                resultsList(onSelect: { selectOrigin($0) })
+            } else if let searchError = searchViewModel.searchError {
+                Text(searchError)
+                    .font(.caption)
+                    .foregroundStyle(Color.statusCritical)
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.statusCritical.opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var currentLocationRow: some View {
+        Button {
+            selectOrigin(nil)
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "location.fill")
+                    .font(.system(size: 15))
+                    .foregroundStyle(Color.kaidoVioletOnMap)
+                    .frame(width: 24, height: 24)
+                Text("Current Location")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.primary)
+                Spacer(minLength: 0)
+            }
+            .padding(.vertical, 8)
+            .padding(.horizontal, 12)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .background(Color.kaidoInk.opacity(0.045), in: RoundedRectangle(cornerRadius: 16))
     }
 
     private var savedPlacesSection: some View {
@@ -716,7 +860,7 @@ struct MapboxMapView: View {
     }
 
     private func placeDetailsContent(_ destination: SearchResult) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 12) {
             if let requestError = navigationViewModel.requestError {
                 Text(requestError)
                     .font(.caption)
@@ -726,8 +870,6 @@ struct MapboxMapView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(Color.statusCritical.opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
             }
-
-            routingPreferenceToggle
 
             if navigationViewModel.isRequestingRoute && navigationViewModel.navigationRoutes == nil {
                 HStack(spacing: 8) {
@@ -741,17 +883,25 @@ struct MapboxMapView: View {
             }
 
             if navigationViewModel.navigationRoutes != nil {
-                routeOptionsList
-            }
+                preferenceAndPaceRow
+                routeSummaryStrip
 
-            if let rideTogetherErrorMessage {
-                Text(rideTogetherErrorMessage)
-                    .font(.caption)
-                    .foregroundStyle(Color.statusCritical)
-            }
+                if let rideTogetherErrorMessage {
+                    Text(rideTogetherErrorMessage)
+                        .font(.caption)
+                        .foregroundStyle(Color.statusCritical)
+                }
 
-            startNavigationButton
-            rideTogetherButton
+                // Keep Ride Together paired with GO so expanding Steps doesn't bury it.
+                rideTogetherButton
+
+                if isRouteDetailsExpanded {
+                    if navigationViewModel.routeOptions.count > 1 {
+                        lightAlternatesList
+                    }
+                    routeDetailsDisclosure
+                }
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -762,23 +912,75 @@ struct MapboxMapView: View {
         let allOptions: [RouteOption]
     }
 
+    /// Quiet/Fast preference and bike pace share one row — both shape the times above, so they
+    /// sit together instead of burying pace under the turn list.
+    private var preferenceAndPaceRow: some View {
+        HStack(spacing: 8) {
+            routingPreferencePill
+            pacePill
+            Spacer(minLength: 0)
+        }
+    }
+
+    /// Secondary to GO. Riding solo is the common case, so the summary strip carries the
+    /// primary action and this stays a plain, quieter text control underneath.
     private var rideTogetherButton: some View {
         Button {
             Task { await startRideTogetherFlow() }
         } label: {
             if isCreatingRideTogether {
-                ProgressView().frame(maxWidth: .infinity)
+                ProgressView().frame(maxWidth: .infinity).frame(height: 22)
             } else {
                 Label("Ride Together", systemImage: "person.2.fill")
                     .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color.kaidoVioletOnMap)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 4)
+                    .frame(height: 22)
             }
         }
-        .buttonStyle(.bordered)
-        .tint(.kaidoViolet)
+        .buttonStyle(.plain)
+        .padding(.vertical, 11)
+        .contentShape(Rectangle())
         .disabled(isRouteUnavailable || isCreatingRideTogether)
+        .opacity(isRouteUnavailable ? 0.48 : 1)
         .accessibilityHint("Invite other riders to navigate to this destination together")
+    }
+
+    /// Compact pace control beside Quiet roads — opens the active bike editor when one exists.
+    @ViewBuilder
+    private var pacePill: some View {
+        let profile = navigationViewModel.rideTimeProfile
+
+        if let activeBike = BikeProfileStore.activeProfile(in: bikeProfiles) {
+            Button {
+                presentedSheet = .bike(activeBike)
+            } label: {
+                pacePillLabel(profile.paceDescription, showsChevron: true)
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("Edit this bike's pace settings")
+        } else {
+            pacePillLabel(profile.paceDescription, showsChevron: false)
+        }
+    }
+
+    private func pacePillLabel(_ pace: String, showsChevron: Bool) -> some View {
+        HStack(spacing: 7) {
+            Image(systemName: "bicycle")
+                .font(.system(size: 12, weight: .semibold))
+            Text(pace)
+                .font(.subheadline.weight(.semibold))
+                .lineLimit(1)
+            if showsChevron {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 10, weight: .bold))
+            }
+        }
+        .foregroundStyle(showsChevron ? Color.kaidoVioletOnMap : Color.kaidoDim)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(Color.kaidoInk.opacity(0.07), in: Capsule())
+        .accessibilityLabel("Times for \(pace)")
     }
 
     private func startRideTogetherFlow() async {
@@ -809,7 +1011,9 @@ struct MapboxMapView: View {
         rideTogetherErrorMessage = nil
         defer { isCreatingRideTogether = false }
 
-        let originCoordinate = locationManager.currentLocation?.coordinate ?? pending.destination.coordinate
+        let originCoordinate = searchViewModel.selectedOrigin?.coordinate
+            ?? locationManager.currentLocation?.coordinate
+            ?? pending.destination.coordinate
         let snapshot = GroupRideRouteSnapshot(
             destinationName: pending.destination.name,
             waypointCoordinates: [originCoordinate, pending.destination.coordinate],
@@ -833,20 +1037,20 @@ struct MapboxMapView: View {
         }
     }
 
-    private var startNavigationButton: some View {
+    /// Compact Apple Maps–style GO — primary CTA for the summary strip.
+    private var goButton: some View {
         Button {
             isPresentingNavigation = true
         } label: {
-            Label("Start Navigation", systemImage: "location.north.line.fill")
-                .font(.headline)
+            Text("GO")
+                .font(.headline.weight(.bold))
                 .foregroundStyle(Color.kaidoInk)
-                .padding(.vertical, 13)
-                .frame(maxWidth: .infinity)
+                .frame(width: 72, height: 72)
                 .background {
-                    RoundedRectangle(cornerRadius: 14)
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
                         .fill(Color.kaidoMidnight)
                         .overlay {
-                            RoundedRectangle(cornerRadius: 14)
+                            RoundedRectangle(cornerRadius: 18, style: .continuous)
                                 .fill(
                                     LinearGradient(
                                         colors: [Color.kaidoViolet, Color.kaidoIndigo],
@@ -854,18 +1058,19 @@ struct MapboxMapView: View {
                                         endPoint: .bottomTrailing
                                     )
                                 )
-                                .opacity(0.9)
+                                .opacity(0.92)
                         }
                 }
                 .overlay {
-                    RoundedRectangle(cornerRadius: 14)
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
                         .stroke(Color.kaidoVioletOnMap.opacity(0.42), lineWidth: 1)
                 }
-                .shadow(color: Color.kaidoViolet.opacity(0.28), radius: 10, y: 4)
+                .shadow(color: Color.kaidoViolet.opacity(0.28), radius: 8, y: 3)
         }
         .buttonStyle(.plain)
         .disabled(isRouteUnavailable)
         .opacity(isRouteUnavailable ? 0.48 : 1)
+        .accessibilityLabel("Start Navigation")
     }
 
     private var isRouteUnavailable: Bool {
@@ -876,11 +1081,55 @@ struct MapboxMapView: View {
         VStack(spacing: 0) {
             drawerGrabber
 
-            destinationHeader(destination)
-                .padding(.horizontal, 18)
-                .padding(.bottom, 14)
+            VStack(spacing: 6) {
+                originRow
+                destinationHeader(destination)
+            }
+            .padding(.horizontal, 18)
+            .padding(.bottom, 10)
         }
         .frame(maxWidth: .infinity)
+    }
+
+    /// Mirrors `destinationHeader`'s row shape so origin and destination read as one route, not
+    /// two different components. The swap button stays disabled while origin is still "Current
+    /// Location" — there's no coordinate to hand the destination slot until it's a real place.
+    private var originRow: some View {
+        HStack(spacing: 8) {
+            Button {
+                beginEditingOrigin()
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: searchViewModel.selectedOrigin?.iconName ?? "location.fill")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.kaidoDim)
+                        .frame(width: 28, height: 28)
+                        .background(Color.kaidoInk.opacity(0.07), in: Circle())
+
+                    Text(searchViewModel.selectedOrigin?.name ?? "Current Location")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+
+                    Spacer(minLength: 0)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Starting point")
+            .accessibilityValue(searchViewModel.selectedOrigin?.name ?? "Current Location")
+            .accessibilityHint("Double tap to search for a different starting point")
+
+            destinationHeaderButton(
+                systemImage: "arrow.up.arrow.down",
+                isSelected: false,
+                accessibilityLabel: "Swap starting point and destination"
+            ) {
+                swapOriginAndDestination()
+            }
+            .disabled(searchViewModel.selectedOrigin == nil)
+            .opacity(searchViewModel.selectedOrigin == nil ? 0.35 : 1)
+        }
     }
 
     private var drawerGrabber: some View {
@@ -910,24 +1159,29 @@ struct MapboxMapView: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(destination.name)
                     .font(.title3.weight(.semibold))
-                    .lineLimit(1)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
 
-                if let category = destination.category {
-                    Text(category.uppercased())
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(Color.kaidoVioletOnMap)
+                // Category and address on separate lines so the street doesn't get clipped by
+                // the trailing action cluster.
+                if let category = destination.category, !category.isEmpty {
+                    Text(category.capitalized)
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
 
-                if let placeFormatted = destination.placeFormatted {
-                    Text(placeFormatted)
+                if let address = destinationAddress(destination) {
+                    Text(address)
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                        .lineLimit(2)
+                        .lineLimit(3)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .multilineTextAlignment(.leading)
                 }
             }
-
-            Spacer(minLength: 4)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .layoutPriority(1)
 
             HStack(spacing: 6) {
                 destinationHeaderButton(
@@ -954,7 +1208,20 @@ struct MapboxMapView: View {
                     clearDestination()
                 }
             }
+            .fixedSize(horizontal: true, vertical: false)
         }
+    }
+
+    /// Street-level address with country stripped — local riders don't need "United States" eating
+    /// the line. State is kept when it fits; wrapping handles longer boulevard names.
+    private func destinationAddress(_ destination: SearchResult) -> String? {
+        guard let address = destination.placeFormatted, !address.isEmpty else { return nil }
+        let trimmed = address
+            .split(separator: ",", omittingEmptySubsequences: true)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.localizedCaseInsensitiveContains("United States") }
+            .joined(separator: ", ")
+        return trimmed.isEmpty ? address : trimmed
     }
 
     private func destinationHeaderButton(
@@ -977,114 +1244,379 @@ struct MapboxMapView: View {
         .accessibilityLabel(accessibilityLabel)
     }
 
-    /// Quiet leans on dedicated lanes and quieter streets; Fast picks the quickest alternative.
-    /// Lives next to the alternatives list so the preference is visible while comparing routes.
-    private var routingPreferenceToggle: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            Text("ROUTE STYLE")
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(Color.kaidoDim)
-
-            Picker("Routing style", selection: $navigationViewModel.preference) {
-                ForEach(RoutingPreference.allCases) { preference in
-                    Label(preference.title, systemImage: preference.systemImage)
-                        .tag(preference)
-                        .accessibilityLabel(preference.accessibilityLabel)
+    /// Apple Maps–style preference control: one pill that opens Quiet roads / Fastest.
+    private var routingPreferencePill: some View {
+        Menu {
+            ForEach(RoutingPreference.allCases) { preference in
+                Button {
+                    navigationViewModel.preference = preference
+                } label: {
+                    Label(preference.menuTitle, systemImage: preference.systemImage)
                 }
+                .accessibilityLabel(preference.accessibilityLabel)
             }
-            .pickerStyle(.segmented)
+        } label: {
+            HStack(spacing: 7) {
+                Image(systemName: navigationViewModel.preference.systemImage)
+                    .font(.system(size: 12, weight: .semibold))
+                Text(navigationViewModel.preference.menuTitle)
+                    .font(.subheadline.weight(.semibold))
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 10, weight: .bold))
+            }
+            .foregroundStyle(Color.kaidoVioletOnMap)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(Color.kaidoViolet.opacity(0.16), in: Capsule())
         }
         .disabled(navigationViewModel.isRequestingRoute)
+        .accessibilityLabel("Routing style")
+        .accessibilityValue(navigationViewModel.preference.menuTitle)
         .accessibilityHint("Changes which route Kaido recommends among alternatives")
     }
 
-    /// Recommended routes for the currently selected destination — tap one to make it the
-    /// route "Start Navigation" will launch. Mirrors what's drawn on the map: the picked
-    /// route is violet and full-strength, the rest are dim.
-    private var routeOptionsList: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("ROUTE OPTIONS")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(Color.kaidoDim)
-                Text("Your ride time · \(navigationViewModel.rideTimeProfile.paceDescription)")
-                    .font(.caption)
-                    .foregroundStyle(Color.kaidoVioletOnMap)
-                    .lineLimit(1)
-            }
+    /// Resting summary: large duration, arrival/distance/stress meta, stress bar, and GO.
+    @ViewBuilder
+    private var routeSummaryStrip: some View {
+        if let option = navigationViewModel.routeOptions.first(where: \.isMain) {
+            HStack(alignment: .center, spacing: 14) {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(Self.formattedDuration(option.personalizedTravelTime))
+                            .font(.system(size: 34, weight: .bold, design: .rounded))
+                            .foregroundStyle(Color.primary)
+                            .minimumScaleFactor(0.7)
+                            .lineLimit(1)
 
-            ScrollView(.horizontal) {
-                HStack(spacing: 9) {
-                    ForEach(navigationViewModel.routeOptions) { option in
+                        Spacer(minLength: 0)
+
                         Button {
-                            Task {
-                                await navigationViewModel.selectRoute(option)
-                                overviewSelectedRoute()
-                            }
+                            toggleRouteDetailsExpanded()
                         } label: {
-                            HStack(alignment: .top, spacing: 10) {
-                                Circle()
-                                    .fill(Self.routeColor(for: option, in: navigationViewModel.routeOptions))
-                                    .frame(width: 8, height: 8)
-                                    .padding(.top, 7)
-
-                                VStack(alignment: .leading, spacing: 5) {
-                                    HStack(alignment: .firstTextBaseline, spacing: 7) {
-                                        Text(formattedDuration(option.personalizedTravelTime))
-                                            .font(.title3.weight(option.isMain ? .semibold : .medium))
-                                            .foregroundStyle(option.isMain ? Color.primary : Color.secondary)
-
-                                        Text(formattedDistance(option.distanceMeters))
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-
-                                        Spacer(minLength: 0)
-
-                                        if option.isMain {
-                                            Image(systemName: "checkmark.circle.fill")
-                                                .foregroundStyle(Color.kaidoViolet)
-                                        }
-                                    }
-
-                                    Text(option.stressProfile.headline)
-                                        .font(.caption.weight(.medium))
-                                        .foregroundStyle(quietColor(for: option.stressProfile.score))
-                                        .lineLimit(1)
-
-                                    Text(option.stressProfile.summary)
-                                        .font(.caption2)
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(1)
-                                }
-                            }
-                            .padding(11)
-                            .frame(width: 270, alignment: .leading)
-                            .background(
-                                option.isMain
-                                    ? Color.kaidoViolet.opacity(0.14)
-                                    : Color.kaidoInk.opacity(0.045),
-                                in: RoundedRectangle(cornerRadius: 13)
-                            )
-                            .overlay {
-                                RoundedRectangle(cornerRadius: 13)
-                                    .stroke(
-                                        option.isMain
-                                            ? Color.kaidoViolet.opacity(0.34)
-                                            : Color.kaidoInk.opacity(0.08),
-                                        lineWidth: 1
-                                    )
-                            }
-                            .contentShape(Rectangle())
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(Color.kaidoDim)
+                                .rotationEffect(.degrees(isRouteDetailsExpanded ? 0 : -90))
+                                .frame(width: 28, height: 28)
+                                .background(Color.kaidoInk.opacity(0.07), in: Circle())
                         }
                         .buttonStyle(.plain)
-                        .accessibilityLabel(routeAccessibilityLabel(for: option))
+                        .accessibilityLabel("Other routes")
+                        .accessibilityValue(isRouteDetailsExpanded ? "Expanded" : "Collapsed")
+                        .accessibilityHint("Double tap to show or hide alternate routes and route details")
                     }
+
+                    Text(routeSummaryMeta(for: option))
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+
+                    RouteStressBar(
+                        quiet: option.stressProfile.quietFraction,
+                        mixed: option.stressProfile.mixedFraction,
+                        busy: option.stressProfile.busyFraction
+                    )
+                    .padding(.top, 2)
                 }
+
+                goButton
             }
-            .scrollIndicators(.hidden)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.kaidoInk.opacity(0.045), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
     }
 
+    private func routeSummaryMeta(for option: RouteOption) -> String {
+        var parts = [
+            "Arrive \(formattedArrival(after: option.personalizedTravelTime))",
+            formattedDistance(option.distanceMeters),
+            stressShortLabel(for: option.stressProfile.score),
+        ]
+        if let elevation = navigationViewModel.elevationByRouteId[option.id] {
+            parts.append(elevation.hillLabel)
+            if elevation.gainMeters >= 1 {
+                parts.append("+\(formattedElevationClimb(elevation.gainMeters))")
+            }
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    private func formattedElevationClimb(_ meters: Double) -> String {
+        let feet = Measurement(value: meters, unit: UnitLength.meters).converted(to: .feet).value
+        let rounded = feet.formatted(.number.precision(.fractionLength(0)))
+        return "\(rounded) ft"
+    }
+
+    /// Nested disclosure — hills + turn list stay out of the primary expand until asked for.
+    private var routeDetailsDisclosure: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Button {
+                withAnimation(
+                    reduceMotion
+                        ? .easeOut(duration: 0.2)
+                        : .spring(response: 0.35, dampingFraction: 0.86)
+                ) {
+                    isTurnDetailsExpanded.toggle()
+                }
+                if isTurnDetailsExpanded {
+                    settleDrawer(to: .full)
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    Text("Route details")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Color.primary)
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Color.kaidoDim)
+                        .rotationEffect(.degrees(isTurnDetailsExpanded ? 0 : -90))
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 11)
+                .background(Color.kaidoInk.opacity(0.045), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Route details")
+            .accessibilityValue(isTurnDetailsExpanded ? "Expanded" : "Collapsed")
+            .accessibilityHint("Double tap to show or hide hills and turn-by-turn steps")
+
+            if isTurnDetailsExpanded {
+                hillsDetailRow
+                routeStepsSection
+            }
+        }
+    }
+
+    /// Expanded hills block — label, gain/loss, and Terrain sparkline when samples exist.
+    @ViewBuilder
+    private var hillsDetailRow: some View {
+        if let main = navigationViewModel.routeOptions.first(where: \.isMain),
+           let elevation = navigationViewModel.elevationByRouteId[main.id] {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .center, spacing: 12) {
+                    Image(systemName: "mountain.2.fill")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Color.kaidoDim)
+                        .frame(width: 22, alignment: .center)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(elevation.hillLabel)
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(Color.primary)
+
+                        Text(hillsDetailSubtitle(elevation))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer(minLength: 0)
+                }
+
+                if elevation.elevationsMeters.count >= 3 {
+                    ElevationSparkline(elevationsMeters: elevation.elevationsMeters)
+                        .padding(.leading, 34)
+                }
+            }
+            .padding(.vertical, 6)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Hills")
+            .accessibilityValue("\(elevation.hillLabel), \(hillsDetailSubtitle(elevation))")
+        }
+    }
+
+    private func hillsDetailSubtitle(_ elevation: ElevationProfile) -> String {
+        var parts: [String] = []
+        if elevation.gainMeters >= 1 {
+            parts.append("+\(formattedElevationClimb(elevation.gainMeters))")
+        }
+        if elevation.lossMeters >= 1 {
+            parts.append("−\(formattedElevationClimb(elevation.lossMeters))")
+        }
+        return parts.isEmpty ? "No significant climb" : parts.joined(separator: " · ")
+    }
+
+    /// Light alternate rows — only shown when there is more than one option. Selecting one
+    /// promotes it for GO. Stress text is omitted when it matches the selected route so the
+    /// summary strip isn't restated on every row.
+    private var lightAlternatesList: some View {
+        let options = navigationViewModel.routeOptions
+        let main = options.first(where: \.isMain)
+        let mainStress = main.map { stressShortLabel(for: $0.stressProfile.score) }
+        let mainElevation = main.flatMap { navigationViewModel.elevationByRouteId[$0.id] }
+
+        return VStack(alignment: .leading, spacing: 0) {
+            Text("Other routes")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .padding(.bottom, 4)
+
+            ForEach(options) { option in
+                Button {
+                    Task {
+                        await navigationViewModel.selectRoute(option)
+                        overviewSelectedRoute()
+                    }
+                } label: {
+                    lightAlternateRow(
+                        option,
+                        mainStressLabel: mainStress,
+                        mainElevation: mainElevation
+                    )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(routeAccessibilityLabel(for: option))
+                .accessibilityAddTraits(option.isMain ? [.isSelected] : [])
+
+                if option.id != options.last?.id {
+                    Divider().opacity(0.35)
+                }
+            }
+        }
+    }
+
+    private func lightAlternateRow(
+        _ option: RouteOption,
+        mainStressLabel: String?,
+        mainElevation: ElevationProfile?
+    ) -> some View {
+        let stressLabel = stressShortLabel(for: option.stressProfile.score)
+        let showStress = mainStressLabel == nil || stressLabel != mainStressLabel
+        let elevation = navigationViewModel.elevationByRouteId[option.id]
+        let showElevation: Bool = {
+            guard let elevation else { return false }
+            guard let mainElevation else { return true }
+            return elevation.hillLabel != mainElevation.hillLabel
+                || abs(elevation.gainMeters - mainElevation.gainMeters) >= 10
+        }()
+
+        return HStack(spacing: 10) {
+            Circle()
+                .fill(Self.routeColor(for: option, in: navigationViewModel.routeOptions))
+                .frame(width: 8, height: 8)
+
+            Text(Self.formattedDuration(option.personalizedTravelTime))
+                .font(.subheadline.weight(option.isMain ? .semibold : .medium))
+                .foregroundStyle(option.isMain ? Color.primary : Color.secondary)
+
+            Text(formattedDistance(option.distanceMeters))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            if showStress {
+                Text(stressLabel)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(quietColor(for: option.stressProfile.score))
+                    .lineLimit(1)
+            }
+
+            if showElevation, let elevation {
+                Text(elevation.hillLabel)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 0)
+
+            if option.isMain {
+                Image(systemName: "checkmark")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(Color.kaidoVioletOnMap)
+            }
+        }
+        .padding(.vertical, 10)
+        .contentShape(Rectangle())
+    }
+
+    private func formattedArrival(after seconds: TimeInterval) -> String {
+        Date().addingTimeInterval(seconds).formatted(date: .omitted, time: .shortened)
+    }
+
+    /// Google Maps–style turn list for the selected route. Lives in the expanded drawer body so
+    /// riders can scan the ride before tapping GO.
+    @ViewBuilder
+    private var routeStepsSection: some View {
+        let steps = navigationViewModel.mainRoutePreviewSteps
+        if !steps.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Steps")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color.primary)
+                    .padding(.top, 4)
+
+                VStack(spacing: 0) {
+                    ForEach(steps) { step in
+                        routeStepRow(step)
+                        if step.id != steps.last?.id {
+                            Divider().opacity(0.35).padding(.leading, 34)
+                        }
+                    }
+                }
+            }
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Turn-by-turn steps")
+        }
+    }
+
+    private func routeStepRow(_ step: PreviewRouteStep) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: step.maneuverSymbolName)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(Color.kaidoVioletOnMap)
+                .frame(width: 22, alignment: .center)
+                .padding(.top, 2)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(step.instructions)
+                    .font(.subheadline)
+                    .foregroundStyle(Color.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if step.distanceMeters > 0 {
+                    Text(NavigationBannerModel.distanceText(step.distanceMeters))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+    }
+
+    private func toggleRouteDetailsExpanded() {
+        if isRouteDetailsExpanded {
+            withAnimation(
+                reduceMotion ? .easeOut(duration: 0.2) : .spring(response: 0.35, dampingFraction: 0.86)
+            ) {
+                isRouteDetailsExpanded = false
+                isTurnDetailsExpanded = false
+            }
+            settleDrawer(to: .medium)
+        } else {
+            expandRouteDetails()
+        }
+    }
+
+    private func expandRouteDetails() {
+        withAnimation(
+            reduceMotion ? .easeOut(duration: 0.2) : .spring(response: 0.35, dampingFraction: 0.86)
+        ) {
+            isRouteDetailsExpanded = true
+        }
+        // Alternates and the Route details disclosure need room above the tab bar.
+        settleDrawer(to: .full)
+    }
+
+    /// Quiet routes read sage, mixed brass, busy clay — the status colours, used here for a
+    /// qualitative state rather than to label a quantity.
     private func quietColor(for stress: Double) -> Color {
         switch stress {
         case ..<0.35: .statusGood
@@ -1093,11 +1625,21 @@ struct MapboxMapView: View {
         }
     }
 
+    /// Short form of `RouteStressScorer.Profile.headline` for the one-line summary row — same
+    /// score bands, a phrase instead of a sentence.
+    private func stressShortLabel(for score: Double) -> String {
+        switch score {
+        case ..<0.35: "Mostly quiet"
+        case ..<0.55: "Mixed"
+        default: "Busier roads"
+        }
+    }
+
     /// Violet remains the active route. Mapbox returns up to two cycling alternatives, which
-    /// receive blue and coral respectively — deliberately distinct from mint bike lanes.
+    /// receive blue and coral respectively — deliberately separate from the mint used for bike
+    /// lanes, so a rider can compare route choices without mistaking one for infrastructure.
     ///
-    /// Static so `KaidoMapCanvas` (a separate view, so the map isn't rebuilt on every search
-    /// drawer drag frame) can share this without needing a reference back to this view.
+    /// Static so `KaidoMapCanvas` can share it without a reference back to this view.
     static func routeColor(for option: RouteOption, in routeOptions: [RouteOption]) -> Color {
         guard !option.isMain else { return .kaidoViolet }
         let alternateIndex = routeOptions
@@ -1111,13 +1653,14 @@ struct MapboxMapView: View {
     }
 
     private func routeAccessibilityLabel(for option: RouteOption) -> String {
-        let duration = formattedDuration(option.personalizedTravelTime)
+        let duration = Self.formattedDuration(option.personalizedTravelTime)
         let distance = formattedDistance(option.distanceMeters)
         let selected = option.isMain ? ", selected" : ""
         return "Your ride time \(duration) with \(navigationViewModel.rideTimeProfile.paceDescription), \(distance), \(option.stressProfile.headline), \(option.stressProfile.summary)\(selected)"
     }
 
-    private func formattedDuration(_ seconds: TimeInterval) -> String {
+    /// Static so `KaidoMapCanvas`'s on-map ETA badges can share it, same treatment as `routeColor`.
+    static func formattedDuration(_ seconds: TimeInterval) -> String {
         let formatter = DateComponentsFormatter()
         formatter.allowedUnits = seconds >= 3600 ? [.hour, .minute] : [.minute]
         formatter.unitsStyle = .abbreviated
@@ -1131,17 +1674,60 @@ struct MapboxMapView: View {
 
     private func selectDestination(_ result: SearchResult) {
         isFreeRideEnabled = false
+        isEditingOrigin = false
         discoverViewModel.clear()
         recordRecent(result)
         searchViewModel.selectResult(result)
         navigationViewModel.clear()
         isSearchFocused = false
+        drawerModel.mediumTopFractionOverride = 0.55
         settleDrawer(to: .medium)
         withViewportAnimation(.default(maxDuration: 1)) {
             viewport = .camera(center: result.coordinate, zoom: 15)
                 .padding(.bottom, followBottomPadding)
         }
         fetchRoutes(to: result)
+    }
+
+    private func beginEditingOrigin() {
+        searchViewModel.beginEditingOrigin()
+        isEditingOrigin = true
+        isSearchFocused = true
+    }
+
+    private func endEditingOrigin() {
+        isEditingOrigin = false
+        searchViewModel.activeTarget = .destination
+        isSearchFocused = false
+    }
+
+    /// `result == nil` means "Current Location" was tapped — reverts to the implicit default
+    /// rather than picking a place.
+    private func selectOrigin(_ result: SearchResult?) {
+        if let result {
+            recordRecent(result)
+            searchViewModel.selectResult(result)
+        } else {
+            searchViewModel.selectedOrigin = nil
+            searchViewModel.resetQuery()
+        }
+        endEditingOrigin()
+        if let destination = searchViewModel.selectedDestination {
+            navigationViewModel.clear()
+            fetchRoutes(to: destination)
+        }
+    }
+
+    /// Only reachable once origin is explicit — the button is disabled until then, since
+    /// "Current Location" has no coordinate to hand the destination slot.
+    private func swapOriginAndDestination() {
+        guard let newDestination = searchViewModel.selectedOrigin,
+              searchViewModel.selectedDestination != nil
+        else { return }
+        searchViewModel.swapOriginAndDestination()
+        recordRecent(newDestination)
+        navigationViewModel.clear()
+        fetchRoutes(to: newDestination)
     }
 
     private func isHome(_ result: SearchResult) -> Bool {
@@ -1213,8 +1799,10 @@ struct MapboxMapView: View {
     }
 
     private func clearDestination() {
+        isEditingOrigin = false
         searchViewModel.clearSelection()
         navigationViewModel.clear()
+        drawerModel.mediumTopFractionOverride = nil
         settleDrawer(to: .medium)
         MapViewportFollow.recenter($viewport, bottomPadding: followBottomPadding)
     }
@@ -1233,14 +1821,16 @@ struct MapboxMapView: View {
     }
 
     private func fetchRoutes(to destination: SearchResult) {
-        guard let currentCoordinate = locationManager.currentLocation?.coordinate else {
+        guard let originCoordinate = searchViewModel.selectedOrigin?.coordinate
+            ?? locationManager.currentLocation?.coordinate
+        else {
             navigationViewModel.requestError = "Waiting for your location…"
             return
         }
         Task {
             navigationViewModel.updateRideTimeProfile(activeRideTimeProfile)
             await navigationViewModel.requestRoutes(
-                waypointCoordinates: [currentCoordinate, destination.coordinate]
+                waypointCoordinates: [originCoordinate, destination.coordinate]
             )
             overviewSelectedRoute()
         }

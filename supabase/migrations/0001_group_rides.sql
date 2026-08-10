@@ -685,7 +685,10 @@ grant execute on function public.touch_group_ride_presence(uuid) to authenticate
 -- GroupRideRealtimeClient/SupabaseGroupRideRealtimeClient) for these policies to be consulted at
 -- all — a channel opened without that option is treated as public and bypasses this table.
 
-alter table realtime.messages enable row level security;
+-- No `alter table realtime.messages enable row level security` here: Supabase owns that table
+-- (via its own system role) and already has RLS enabled on it. The project's SQL-editor role has
+-- just enough delegated privilege to add policies, not to run ALTER TABLE against it — attempting
+-- the ALTER fails with "must be owner of table messages" (42501).
 
 create policy group_ride_channel_receive on realtime.messages
     for select

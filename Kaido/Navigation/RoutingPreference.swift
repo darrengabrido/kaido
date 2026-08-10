@@ -18,6 +18,14 @@ enum RoutingPreference: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
+    /// Longer label for the place-card preference pill (Apple Maps–style menu).
+    var menuTitle: String {
+        switch self {
+        case .quiet: "Quiet roads"
+        case .fast: "Fastest"
+        }
+    }
+
     var systemImage: String {
         switch self {
         case .quiet: "leaf.fill"

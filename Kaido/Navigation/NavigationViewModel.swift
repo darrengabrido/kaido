@@ -3,6 +3,15 @@ import CoreLocation
 import MapboxDirections
 import MapboxNavigationCore
 
+/// Rider-facing turn preview for the place card — keeps Mapbox `RouteStep` / `Route` types out of
+/// SwiftUI map views that also import the SwiftData `Route` model.
+struct PreviewRouteStep: Identifiable, Sendable {
+    let id: Int
+    let instructions: String
+    let distanceMeters: Double
+    let maneuverSymbolName: String
+}
+
 struct RouteOption: Identifiable {
     let id: String
     let distanceMeters: Double
@@ -71,6 +80,8 @@ final class NavigationViewModel {
     var requestError: String?
     var navigationRoutes: NavigationRoutes?
     var rideTimeProfile: RideTimeProfile = .defaultProfile
+    /// Async Terrain enrichment keyed by `RouteOption.id`. Missing means hills aren't ready yet.
+    var elevationByRouteId: [String: ElevationProfile] = [:]
     var preference: RoutingPreference = RoutingPreferenceStore.current {
         didSet {
             RoutingPreferenceStore.current = preference
@@ -81,6 +92,9 @@ final class NavigationViewModel {
     }
 
     private let directionsService = DirectionsService()
+    private let elevationService = ElevationService()
+    private var elevationTask: Task<Void, Never>?
+    private var elevationGeneration = 0
 
     var routeOptions: [RouteOption] {
         guard let navigationRoutes else { return [] }
@@ -120,6 +134,27 @@ final class NavigationViewModel {
         return options
     }
 
+    /// Turn-by-turn list for the currently selected (main) route, used when the place card expands.
+    var mainRoutePreviewSteps: [PreviewRouteStep] {
+        guard let route = navigationRoutes?.mainRoute.route else { return [] }
+        return route.legs
+            .flatMap(\.steps)
+            .enumerated()
+            .compactMap { index, step in
+                let instructions = step.instructions.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !instructions.isEmpty else { return nil }
+                return PreviewRouteStep(
+                    id: index,
+                    instructions: instructions,
+                    distanceMeters: step.distance,
+                    maneuverSymbolName: NavigationBannerModel.maneuverSymbol(
+                        type: step.maneuverType,
+                        direction: step.maneuverDirection
+                    )
+                )
+            }
+    }
+
     func requestRoutes(waypointCoordinates: [CLLocationCoordinate2D]) async {
         isRequestingRoute = true
         requestError = nil
@@ -129,7 +164,9 @@ final class NavigationViewModel {
                 waypointCoordinates: waypointCoordinates
             )
             await promotePreferredRoute()
+            startElevationEnrichment()
         } catch {
+            cancelElevationEnrichment()
             navigationRoutes = nil
             requestError = error.localizedDescription
         }
@@ -142,16 +179,55 @@ final class NavigationViewModel {
               let navigationRoutes else { return }
         if let updated = await navigationRoutes.selecting(alternativeRoute: alternativeRoute) {
             self.navigationRoutes = updated
+            // Route IDs are stable across promote; cached hills stay valid.
         }
     }
 
     func clear() {
+        cancelElevationEnrichment()
         navigationRoutes = nil
         requestError = nil
     }
 
     func updateRideTimeProfile(_ profile: RideTimeProfile) {
         rideTimeProfile = profile
+    }
+
+    private func cancelElevationEnrichment() {
+        elevationGeneration += 1
+        elevationTask?.cancel()
+        elevationTask = nil
+        elevationByRouteId = [:]
+    }
+
+    /// Non-blocking Terrain pass. Main route first so the summary strip updates sooner.
+    private func startElevationEnrichment() {
+        let options = routeOptions
+        let liveIDs = Set(options.map(\.id))
+        elevationByRouteId = elevationByRouteId.filter { liveIDs.contains($0.key) }
+
+        elevationGeneration += 1
+        let generation = elevationGeneration
+        elevationTask?.cancel()
+
+        let ordered = options.sorted { lhs, rhs in
+            if lhs.isMain != rhs.isMain { return lhs.isMain && !rhs.isMain }
+            return lhs.id < rhs.id
+        }
+
+        elevationTask = Task { [elevationService] in
+            for option in ordered {
+                guard !Task.isCancelled, generation == elevationGeneration else { return }
+                if elevationByRouteId[option.id] != nil { continue }
+
+                let samples = PolylineSampler.coordinates(along: option.coordinates)
+                let heights = await elevationService.elevations(along: samples)
+                guard !Task.isCancelled, generation == elevationGeneration else { return }
+                guard let profile = ElevationMath.profile(from: heights) else { continue }
+
+                elevationByRouteId[option.id] = profile
+            }
+        }
     }
 
     /// Picks the alternative that best matches the active preference and promotes it to main.
