@@ -165,6 +165,25 @@ struct RoutePlannerView: View {
         route.waypoints = waypointModels
 
         modelContext.insert(route)
+
+        // Sample Terrain climb so the Routes list/detail aren't stuck at 0 ft.
+        let sampleCoordinates: [CLLocationCoordinate2D]
+        if let snapped = viewModel.snappedCoordinates, viewModel.isSnapEnabled, snapped.count > 1 {
+            sampleCoordinates = snapped
+        } else {
+            sampleCoordinates = viewModel.waypoints.map(\.coordinate)
+        }
+        Task {
+            let samples = PolylineSampler.coordinates(along: sampleCoordinates)
+            let heights = await ElevationService().elevations(along: samples)
+            if let profile = ElevationMath.profile(from: heights) {
+                await MainActor.run {
+                    route.elevationGainMeters = profile.gainMeters
+                    try? modelContext.save()
+                }
+            }
+        }
+
         dismiss()
     }
 }
