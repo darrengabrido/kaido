@@ -23,7 +23,7 @@ struct RiderShowcaseCard: View {
                         .foregroundStyle(Color.kaidoInk)
                         .lineLimit(1)
 
-                    Text(profile.displayName.isEmpty ? "Tell Kaido a little about you" : profile.experienceLevel.title)
+                    Text(profile.displayName.isEmpty ? "Tell Kaido a little about you" : subtitleText)
                         .font(.subheadline)
                         .foregroundStyle(Color.kaidoDim)
                         .lineLimit(1)
@@ -35,11 +35,8 @@ struct RiderShowcaseCard: View {
             }
 
             if !profile.displayName.isEmpty {
-                HStack(spacing: 8) {
-                    experienceTag
-                    if !profile.homeCity.isEmpty {
-                        cityTag
-                    }
+                if !profile.homeCity.isEmpty {
+                    cityTag
                 }
 
                 if !profile.bio.isEmpty {
@@ -81,15 +78,6 @@ struct RiderShowcaseCard: View {
         profile.homeCity.isEmpty
             ? profile.experienceLevel.title
             : "\(profile.homeCity) · \(profile.experienceLevel.title)"
-    }
-
-    private var experienceTag: some View {
-        Label(profile.experienceLevel.title, systemImage: profile.experienceLevel.systemImage)
-            .font(.caption.weight(.medium))
-            .foregroundStyle(Color.kaidoInk)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(Color.kaidoInk.opacity(0.1), in: Capsule())
     }
 
     private var cityTag: some View {
