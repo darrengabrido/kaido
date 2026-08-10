@@ -1,9 +1,11 @@
 import Foundation
 
-/// Seed content for the Routes tab's "Community" section: a handful of well-known, real bike
-/// routes bundled directly into the app so the feed is never empty even before any rider has
-/// published one of their own (see `CompositeCommunityRouteService`, which merges this catalog
-/// with whatever's been published to Supabase).
+/// Seed content for the Routes tab's "Community" section: a dozen well-known, real bike routes
+/// bundled directly into the app so the feed is never empty even before any rider has published
+/// one of their own (see `CompositeCommunityRouteService`, which merges this catalog with
+/// whatever's been published to Supabase). Skews heavily toward California — eight of the twelve
+/// routes are there — with one route each in New York, Illinois, Washington, and Texas rounding
+/// out the set.
 ///
 /// Every route below corresponds to an actual, named public trail. Distance and elevation gain
 /// are taken from a single official or GPS-tracked source per route (cited above each entry)
@@ -139,6 +141,114 @@ enum CuratedCommunityRoutes {
                 (30.26126, -97.74531),
                 (30.2488, -97.7281),
                 (30.26722, -97.76167)
+            ]
+        ),
+
+        // California, round two — more of the state's best-known rides.
+        //
+        // Distance/elevation: AllTrails' GPS-tracked "Across the Golden Gate Bridge to Sausalito"
+        // route, 3.9 mi / 396 ft gain. Waypoints: the bridge's SF-side Welcome Center, Vista Point
+        // on the Sausalito side, and the Sausalito ferry landing/downtown waterfront.
+        makeRoute(
+            id: "3F2B9C10-6E4A-4B8E-9C2D-000000000007",
+            name: "Golden Gate Bridge to Sausalito",
+            description: "San Francisco, CA — cross the bridge on its car-free path, then coast "
+                + "downhill into the bayside town of Sausalito.",
+            distanceMeters: 6_276,
+            elevationGainMeters: 121,
+            waypoints: [
+                (37.8073, -122.4748),
+                (37.8323, -122.4796),
+                (37.8590, -122.4777)
+            ]
+        ),
+        // Distance: Wikipedia/LA County Beaches & Harbors' official figure for the full Marvin
+        // Braude Bike Trail ("The Strand") — 22.3 mi (35.9 km), Will Rogers State Beach to
+        // Torrance Beach. Elevation is nominal — it's a sea-level beachfront path essentially the
+        // whole way. Waypoints: Will Rogers State Beach, the Santa Monica Pier, Fisherman's
+        // Village at Marina del Rey, and Torrance Beach.
+        makeRoute(
+            id: "3F2B9C10-6E4A-4B8E-9C2D-000000000008",
+            name: "The Strand: Marvin Braude Bike Trail",
+            description: "Los Angeles, CA — the full 22-mile beachfront path from Will Rogers "
+                + "State Beach past the Santa Monica Pier and Marina del Rey down to Torrance Beach.",
+            distanceMeters: 35_900,
+            elevationGainMeters: 30,
+            waypoints: [
+                (34.03972, -118.56028),
+                (34.00861, -118.49861),
+                (33.9718, -118.4463),
+                (33.82917, -118.39639)
+            ]
+        ),
+        // Distance/elevation: AllTrails' GPS-tracked "American River Bike Trail (Jedediah Smith
+        // Memorial Trail)" route, 32.3 mi / 944 ft gain — matches Sacramento County's official
+        // "32-mile" figure. Waypoints: Discovery Park, William B. Pond Recreation Area (a real
+        // access point roughly a third of the way in), and Beal's Point on Folsom Lake.
+        makeRoute(
+            id: "3F2B9C10-6E4A-4B8E-9C2D-000000000009",
+            name: "American River Bike Trail",
+            description: "Sacramento, CA — the Jedediah Smith Memorial Trail, one of the longest "
+                + "paved bike trails in the country, from Discovery Park up the river to Folsom Lake.",
+            distanceMeters: 51_982,
+            elevationGainMeters: 288,
+            waypoints: [
+                (38.6049, -121.4980),
+                (38.5822, -121.3337),
+                (38.7213, -121.1697)
+            ]
+        ),
+        // Distance/elevation: Wikipedia's "Silver Strand bikeway" entry — 9 mi, "at sea level
+        // with no elevation gain." Waypoints: Hotel del Coronado (near the bikeway's northern
+        // start), Silver Strand State Beach partway down the spit, and the Imperial Beach
+        // Municipal Pier at the southern end.
+        makeRoute(
+            id: "3F2B9C10-6E4A-4B8E-9C2D-00000000000A",
+            name: "Silver Strand Bikeway",
+            description: "Coronado, CA — a flat, car-free ride down the narrow sand spit from "
+                + "the Hotel del Coronado to Imperial Beach, with San Diego Bay on one side and "
+                + "the Pacific on the other.",
+            distanceMeters: 14_484,
+            elevationGainMeters: 5,
+            waypoints: [
+                (32.6809, -117.1784),
+                (32.63633, -117.14278),
+                (32.57944, -117.13417)
+            ]
+        ),
+        // Distance: NVTA's official announcement of the Vine Trail's newest completed segment —
+        // 8.2 mi, Pratt Ave in St. Helena to Lincoln Ave in Calistoga, opened Aug. 2024, winding
+        // through Bothe-Napa Valley State Park. Elevation is estimated from the two towns'
+        // official USGS elevations (St. Helena 253 ft, Calistoga 348 ft) plus some rolling terrain
+        // through the state park — no official trail-specific gain figure is published yet.
+        makeRoute(
+            id: "3F2B9C10-6E4A-4B8E-9C2D-00000000000B",
+            name: "Napa Valley Vine Trail: St. Helena to Calistoga",
+            description: "Napa Valley, CA — a paved wine-country ride from downtown St. Helena "
+                + "through Bothe-Napa Valley State Park to the historic Calistoga Depot.",
+            distanceMeters: 13_197,
+            elevationGainMeters: 40,
+            waypoints: [
+                (38.505, -122.470),
+                (38.5511, -122.5161),
+                (38.5798, -122.5781)
+            ]
+        ),
+        // Distance/elevation: Great Runs' route guide for West Cliff Drive — 2.8 mi one-way,
+        // 127 ft gain, Municipal Wharf to Natural Bridges State Beach. Waypoints: the Santa Cruz
+        // Municipal Wharf, Lighthouse Point overlooking Steamer Lane, and Natural Bridges State
+        // Beach.
+        makeRoute(
+            id: "3F2B9C10-6E4A-4B8E-9C2D-00000000000C",
+            name: "West Cliff Drive",
+            description: "Santa Cruz, CA — a short, scenic coastal ride from the Municipal Wharf "
+                + "past the Steamer Lane surf break to Natural Bridges State Beach.",
+            distanceMeters: 4_506,
+            elevationGainMeters: 39,
+            waypoints: [
+                (36.9602, -122.0204),
+                (36.9513, -122.0266),
+                (36.9525, -122.0575)
             ]
         )
     ]
