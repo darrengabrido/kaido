@@ -1,8 +1,12 @@
 import Foundation
 
-/// Locally-remembered Ride Together display name, independent of any permanent account name —
-/// Kaido doesn't collect one at sign-up today, and a guest shouldn't be asked twice. Mirrors the
+/// Locally-remembered display name, independent of any permanent account name — Kaido doesn't
+/// collect one at sign-up today, and a guest shouldn't be asked twice. Mirrors the
 /// `UserDefaults`-backed convention already used by `RoutingPreferenceStore`.
+///
+/// Originally built for Ride Together (hence the name), and reused as-is by "Share to Community"
+/// (`RouteDetailView`/`ShareRouteToCommunitySheet`) — both features need exactly the same thing:
+/// a name shown to other riders, remembered once so a guest is never asked twice.
 enum GroupRideDisplayNameStore {
     private static let key = "kaido.rideTogether.displayName"
 

@@ -18,6 +18,11 @@ struct RouteDetailView: View {
     @State private var pendingRawInviteToken: String?
     @State private var isCreatingRideTogether = false
     @State private var rideTogetherErrorMessage: String?
+    @State private var isPresentingShareToCommunitySheet = false
+    @State private var isPresentingCommunityNamePrompt = false
+    @State private var isUpdatingCommunityShare = false
+    @State private var communityErrorMessage: String?
+    private let communityRouteService: CommunityRouteService = CompositeCommunityRouteService()
 
     init(route: Route) {
         self.route = route
@@ -138,6 +143,12 @@ struct RouteDetailView: View {
                 .tint(.kaidoViolet)
                 .disabled(isCreatingRideTogether || navigationViewModel.isRequestingRoute || coordinates.count < 2)
                 .accessibilityHint("Invite other riders to navigate this route together")
+
+                if let communityErrorMessage {
+                    Text(communityErrorMessage)
+                        .font(.caption)
+                        .foregroundStyle(Color.statusCritical)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding()
@@ -161,6 +172,32 @@ struct RouteDetailView: View {
                 }
                 .tint(.kaidoViolet)
             }
+
+            ToolbarItem(placement: .primaryAction) {
+                if route.sharedCommunityRouteId != nil {
+                    Button {
+                        Task { await removeFromCommunity() }
+                    } label: {
+                        if isUpdatingCommunityShare {
+                            ProgressView()
+                        } else {
+                            Image(systemName: "person.2.slash")
+                        }
+                    }
+                    .tint(.routeTeal)
+                    .disabled(isUpdatingCommunityShare)
+                    .accessibilityLabel("Remove from Community")
+                } else {
+                    Button {
+                        startShareToCommunityFlow()
+                    } label: {
+                        Image(systemName: "globe")
+                    }
+                    .tint(.routeTeal)
+                    .disabled(coordinates.count < 2)
+                    .accessibilityLabel("Share to Community")
+                }
+            }
         }
         .fullScreenCover(isPresented: $isPresentingRideTogetherLobby) {
             GroupRideLobbyView(
@@ -182,6 +219,23 @@ struct RouteDetailView: View {
                 },
                 onCancel: { isPresentingRideTogetherNamePrompt = false }
             )
+        }
+        .sheet(isPresented: $isPresentingCommunityNamePrompt) {
+            GroupRideDisplayNamePromptView(
+                title: String(localized: "What should other riders see?"),
+                message: String(localized: "Shown as the author on any route you share to the community."),
+                onSubmit: { name in
+                    isPresentingCommunityNamePrompt = false
+                    GroupRideDisplayNameStore.current = name
+                    isPresentingShareToCommunitySheet = true
+                },
+                onCancel: { isPresentingCommunityNamePrompt = false }
+            )
+        }
+        .sheet(isPresented: $isPresentingShareToCommunitySheet) {
+            ShareRouteToCommunitySheet(route: route) { name, description in
+                try await publishToCommunity(name: name, description: description)
+            }
         }
         .fullScreenCover(isPresented: $isPresentingNavigation) {
             if let navigationRoutes = navigationViewModel.navigationRoutes {
@@ -279,5 +333,43 @@ struct RouteDetailView: View {
 
     private var activeRideTimeProfile: RideTimeProfile {
         BikeProfileStore.activeProfile(in: bikeProfiles)?.rideTimeProfile ?? .defaultProfile
+    }
+
+    private func startShareToCommunityFlow() {
+        if GroupRideDisplayNameStore.current != nil {
+            isPresentingShareToCommunitySheet = true
+        } else {
+            isPresentingCommunityNamePrompt = true
+        }
+    }
+
+    private func publishToCommunity(name: String, description: String?) async throws {
+        let waypoints = route.orderedWaypoints.map {
+            CommunityRoute.Waypoint(latitude: $0.latitude, longitude: $0.longitude, order: $0.order)
+        }
+        let displayName = GroupRideDisplayNameStore.current ?? "Rider"
+        let published = try await communityRouteService.publish(
+            name: name,
+            description: description,
+            distanceMeters: route.distanceMeters,
+            elevationGainMeters: route.elevationGainMeters,
+            waypoints: waypoints,
+            displayName: displayName
+        )
+        GroupRideDisplayNameStore.current = displayName
+        route.sharedCommunityRouteId = published.id
+    }
+
+    private func removeFromCommunity() async {
+        guard let sharedCommunityRouteId = route.sharedCommunityRouteId else { return }
+        isUpdatingCommunityShare = true
+        communityErrorMessage = nil
+        do {
+            try await communityRouteService.remove(routeId: sharedCommunityRouteId)
+            route.sharedCommunityRouteId = nil
+        } catch {
+            communityErrorMessage = error.localizedDescription
+        }
+        isUpdatingCommunityShare = false
     }
 }
