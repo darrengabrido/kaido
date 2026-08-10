@@ -55,15 +55,8 @@ struct CommunityRouteDetailView: View {
             .padding(.trailing, 16)
 
             VStack(alignment: .leading, spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(route.name)
-                        .font(.title2.bold())
-                    if let areaName = route.areaName {
-                        Text(areaName)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-                }
+                Text(route.name)
+                    .font(.title2.bold())
 
                 HStack(spacing: 8) {
                     StatTile(value: formattedDistance, label: "distance", tint: .routeTeal)
@@ -76,7 +69,7 @@ struct CommunityRouteDetailView: View {
                         .foregroundStyle(.secondary)
                 }
 
-                Label("Curated by \(route.curatorName)", systemImage: "checkmark.seal.fill")
+                Label("Shared by \(route.authorDisplayName)", systemImage: "person.crop.circle")
                     .font(.caption.weight(.medium))
                     .foregroundStyle(Color.routeTeal)
 

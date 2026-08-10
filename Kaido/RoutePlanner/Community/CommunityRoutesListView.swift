@@ -1,9 +1,10 @@
 import SwiftUI
 
 /// The "Community" section of the Routes tab — see `CommunityRoutesViewModel` and
-/// `CuratedCommunityRoutes` for where the data comes from.
+/// `CommunityRouteService` for where the data comes from.
 struct CommunityRoutesListView: View {
     @State private var viewModel = CommunityRoutesViewModel()
+    @State private var removeErrorMessage: String?
 
     var body: some View {
         Group {
@@ -20,7 +21,7 @@ struct CommunityRoutesListView: View {
                 ContentUnavailableView(
                     "No Community Routes Yet",
                     systemImage: "person.3",
-                    description: Text("Check back soon for routes curated by the Kaido team.")
+                    description: Text("Check back soon for routes shared by the Kaido community.")
                 )
             } else {
                 List {
@@ -30,6 +31,15 @@ struct CommunityRoutesListView: View {
                         }
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
+                        .swipeActions(edge: .trailing) {
+                            if viewModel.isMine(route) {
+                                Button(role: .destructive) {
+                                    Task { await remove(route) }
+                                } label: {
+                                    Label("Remove", systemImage: "trash")
+                                }
+                            }
+                        }
                     }
                 }
                 .listStyle(.plain)
@@ -37,6 +47,26 @@ struct CommunityRoutesListView: View {
             }
         }
         .task { await viewModel.load() }
+        .alert("Couldn't Remove Route", isPresented: removeErrorBinding) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(removeErrorMessage ?? "")
+        }
+    }
+
+    private var removeErrorBinding: Binding<Bool> {
+        Binding(
+            get: { removeErrorMessage != nil },
+            set: { isPresented in if !isPresented { removeErrorMessage = nil } }
+        )
+    }
+
+    private func remove(_ route: CommunityRoute) async {
+        do {
+            try await viewModel.remove(route)
+        } catch {
+            removeErrorMessage = error.localizedDescription
+        }
     }
 }
 
@@ -56,18 +86,25 @@ private struct CommunityRouteRow: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(route.name)
                     .font(.subheadline.weight(.medium))
-                if let areaName = route.areaName {
-                    Text(areaName)
+
+                HStack(spacing: 6) {
+                    Text(formattedDistance(route.distanceMeters))
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(Color.routeTeal)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 3)
+                        .background(Color.routeTeal.opacity(0.14))
+                        .clipShape(Capsule())
+
+                    Text("· \(route.authorDisplayName)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                        .lineLimit(1)
                 }
-                Text(formattedDistance(route.distanceMeters))
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(Color.routeTeal)
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 3)
-                    .background(Color.routeTeal.opacity(0.14))
-                    .clipShape(Capsule())
+
+                Text(route.createdAt, format: .relative(presentation: .named))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
         }
         .padding(.vertical, 4)
