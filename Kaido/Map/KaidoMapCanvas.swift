@@ -1,3 +1,4 @@
+import CoreLocation
 import MapboxMaps
 import SwiftUI
 
@@ -20,12 +21,23 @@ struct KaidoMapCanvas: View {
     let onSelectResult: (SearchResult) -> Void
     let routeOptions: [RouteOption]
     let onSelectRoute: (RouteOption) -> Void
+    /// Fires when the rider taps one of the Standard style's own POI icons (a business/park/etc.
+    /// baked into the base map, not one of our own annotations) — name, coordinate, maki icon id.
+    let onTapBasemapPOI: (String, CLLocationCoordinate2D, String?) -> Void
 
     var body: some View {
         Map(viewport: $viewport) {
             // Course matches travel direction used by follow-puck; heading made the
             // puck spin when the phone was still or magnetically noisy on a mount.
             Puck2D(bearing: .course)
+
+            // The Standard style's own predefined POI featureset — distinct from our own
+            // CircleAnnotationGroups below, since these icons are rendered by the style itself.
+            TapInteraction(.standardPoi) { poi, _ in
+                guard let name = poi.name, !name.isEmpty else { return false }
+                onTapBasemapPOI(name, poi.coordinate, poi.maki)
+                return true
+            }
 
             if showBikeLanes {
                 BikeLaneMapLayers()

@@ -107,7 +107,7 @@ struct MapboxMapView: View {
                 showBikeLanes: showBikeLanes,
                 selectedDestination: searchViewModel.selectedDestination,
                 searchResults: searchViewModel.selectedDestination == nil ? searchViewModel.filteredResults : [],
-                onSelectResult: selectDestination,
+                onSelectResult: { result in selectDestination(result) },
                 routeOptions: navigationViewModel.routeOptions,
                 onSelectRoute: { option in
                     Task {
@@ -115,7 +115,8 @@ struct MapboxMapView: View {
                         overviewSelectedRoute()
                         expandRouteDetails()
                     }
-                }
+                },
+                onTapBasemapPOI: selectBasemapPOI
             )
 
             // Recenter sits above the cycling menu so riders can recover follow after a pan.
@@ -577,7 +578,7 @@ struct MapboxMapView: View {
                         selected: $searchViewModel.selectedCategory
                     )
                 }
-                resultsList(onSelect: selectDestination)
+                resultsList(onSelect: { result in selectDestination(result) })
             } else if let message = speechErrorMessage ?? searchViewModel.searchError {
                 Text(message)
                     .font(.caption)
@@ -916,6 +917,21 @@ struct MapboxMapView: View {
                         routeDetailsBody
                     }
                 }
+            } else if !navigationViewModel.isRequestingRoute && navigationViewModel.requestError == nil {
+                // A tapped basemap POI lands here — selectBasemapPOI deliberately skips the
+                // auto route-preview every other selection path takes, so routing is this
+                // explicit opt-in instead of something that happens the moment you tap a pin.
+                Button {
+                    fetchRoutes(to: destination)
+                } label: {
+                    Label("Directions", systemImage: "arrow.triangle.turn.up.right.circle.fill")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Color.kaidoVioletOnMap)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(Color.kaidoViolet.opacity(0.18), in: RoundedRectangle(cornerRadius: 12))
+                }
+                .buttonStyle(.plain)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1695,7 +1711,7 @@ struct MapboxMapView: View {
             .formatted(.measurement(width: .abbreviated, usage: .road))
     }
 
-    private func selectDestination(_ result: SearchResult) {
+    private func selectDestination(_ result: SearchResult, previewRoute: Bool = true) {
         isFreeRideEnabled = false
         isEditingOrigin = false
         discoverViewModel.clear()
@@ -1709,7 +1725,28 @@ struct MapboxMapView: View {
             viewport = .camera(center: result.coordinate, zoom: 15)
                 .padding(.bottom, followBottomPadding)
         }
-        fetchRoutes(to: result)
+        if previewRoute {
+            fetchRoutes(to: result)
+        }
+    }
+
+    /// A rider tapped one of the Standard style's own POI icons on the base map (not a search
+    /// result) — build a lightweight `SearchResult` locally, no network round trip, and show the
+    /// same place card everything else uses, but without auto-starting a route preview.
+    private func selectBasemapPOI(name: String, coordinate: CLLocationCoordinate2D, maki: String?) {
+        guard !isPresentingNavigation else { return }
+        let (iconName, placeCategory) = PlaceCategory.categorize(maki: maki, isPOI: true)
+        let result = SearchResult(
+            id: "basemap:\(coordinate.latitude),\(coordinate.longitude)",
+            name: name,
+            placeFormatted: nil,
+            coordinate: coordinate,
+            category: placeCategory.label,
+            iconName: iconName,
+            isPOI: true,
+            placeCategory: placeCategory
+        )
+        selectDestination(result, previewRoute: false)
     }
 
     private func beginEditingOrigin() {
