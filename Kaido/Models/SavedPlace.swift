@@ -35,14 +35,16 @@ final class SavedPlace {
     }
 
     var searchResult: SearchResult {
-        SearchResult(
+        let resolvedIconName = isHome ? "house.fill" : iconName
+        return SearchResult(
             id: mapboxIdentifier.isEmpty ? "saved:\(id.uuidString)" : mapboxIdentifier,
             name: name,
             placeFormatted: address.isEmpty ? nil : address,
             coordinate: coordinate,
             category: category.isEmpty ? nil : category,
-            iconName: isHome ? "house.fill" : iconName,
-            isPOI: isPOI
+            iconName: resolvedIconName,
+            isPOI: isPOI,
+            placeCategory: PlaceCategory(iconName: iconName)
         )
     }
 

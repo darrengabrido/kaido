@@ -20,7 +20,8 @@ struct POIRecommendation: Identifiable, Equatable {
             coordinate: coordinate,
             category: category,
             iconName: iconName,
-            isPOI: true
+            isPOI: true,
+            placeCategory: PlaceCategory(iconName: iconName)
         )
     }
 

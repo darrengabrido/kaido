@@ -1,3 +1,4 @@
+import CoreLocation
 import MapboxMaps
 import SwiftUI
 
@@ -14,8 +15,15 @@ struct KaidoMapCanvas: View {
     @Binding var viewport: Viewport
     let showBikeLanes: Bool
     let selectedDestination: SearchResult?
+    /// Candidate places from an in-progress search — shown as pins only while browsing, before
+    /// a destination is picked (the caller passes an empty array once one is selected).
+    let searchResults: [SearchResult]
+    let onSelectResult: (SearchResult) -> Void
     let routeOptions: [RouteOption]
     let onSelectRoute: (RouteOption) -> Void
+    /// Fires when the rider taps one of the Standard style's own POI icons (a business/park/etc.
+    /// baked into the base map, not one of our own annotations) — name, coordinate, maki icon id.
+    let onTapBasemapPOI: (String, CLLocationCoordinate2D, String?) -> Void
 
     var body: some View {
         Map(viewport: $viewport) {
@@ -23,8 +31,32 @@ struct KaidoMapCanvas: View {
             // puck spin when the phone was still or magnetically noisy on a mount.
             Puck2D(bearing: .course)
 
+            // The Standard style's own predefined POI featureset — distinct from our own
+            // CircleAnnotationGroups below, since these icons are rendered by the style itself.
+            TapInteraction(.standardPoi) { poi, _ in
+                guard let name = poi.name, !name.isEmpty else { return false }
+                onTapBasemapPOI(name, poi.coordinate, poi.maki)
+                return true
+            }
+
             if showBikeLanes {
                 BikeLaneMapLayers()
+            }
+
+            // Drawn before the selected-destination pin so a chosen result's larger red pin
+            // still renders on top of the candidate set, if both are briefly visible at once.
+            if !searchResults.isEmpty {
+                CircleAnnotationGroup(searchResults) { result in
+                    CircleAnnotation(centerCoordinate: result.coordinate)
+                        .circleColor(UIColor(Color.kaidoViolet))
+                        .circleRadius(6)
+                        .circleStrokeColor(.white)
+                        .circleStrokeWidth(1.5)
+                        .onTapGesture {
+                            onSelectResult(result)
+                        }
+                }
+                .circleEmissiveStrength(1)
             }
 
             if let selectedDestination {

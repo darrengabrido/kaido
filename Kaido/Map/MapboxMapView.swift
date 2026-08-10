@@ -22,6 +22,7 @@ struct MapboxMapView: View {
     @State private var showBikeLanes = true
     @State private var isFreeRideEnabled = false
     @State private var searchViewModel = MapSearchViewModel()
+    @State private var placeEnrichmentViewModel = PlaceEnrichmentViewModel()
     @State private var discoverViewModel = DiscoverViewModel()
     @State private var navigationViewModel = NavigationViewModel()
     @State private var isPresentingNavigation = false
@@ -106,6 +107,8 @@ struct MapboxMapView: View {
                 viewport: $viewport,
                 showBikeLanes: showBikeLanes,
                 selectedDestination: searchViewModel.selectedDestination,
+                searchResults: searchViewModel.selectedDestination == nil ? searchViewModel.filteredResults : [],
+                onSelectResult: { result in selectDestination(result) },
                 routeOptions: navigationViewModel.routeOptions,
                 onSelectRoute: { option in
                     Task {
@@ -113,7 +116,8 @@ struct MapboxMapView: View {
                         overviewSelectedRoute()
                         expandRouteDetails()
                     }
-                }
+                },
+                onTapBasemapPOI: selectBasemapPOI
             )
 
             // Recenter sits above the cycling menu so riders can recover follow after a pan.
@@ -230,6 +234,22 @@ struct MapboxMapView: View {
             isTurnDetailsExpanded = false
             // Shorter medium detent while a place card is up so the map stays the hero.
             drawerModel.mediumTopFractionOverride = destinationID == nil ? nil : 0.55
+            if let destination = searchViewModel.selectedDestination {
+                placeEnrichmentViewModel.load(for: destination)
+            } else {
+                placeEnrichmentViewModel.clear()
+            }
+        }
+        // Frame every candidate pin as results come in (or a category pill narrows them),
+        // so the rider can see what's nearby without manually panning to find it.
+        .onChange(of: searchViewModel.filteredResults) { _, newResults in
+            guard searchViewModel.selectedDestination == nil, !newResults.isEmpty else { return }
+            guard let fitted = MapViewportFollow.fit(newResults.map(\.coordinate), bottomPadding: followBottomPadding) else {
+                return
+            }
+            withViewportAnimation(.default(maxDuration: 1)) {
+                viewport = fitted
+            }
         }
         // Live dictation streams straight into the query, so debounce, suggestions, and results
         // behave exactly as they do for typing.
@@ -352,7 +372,7 @@ struct MapboxMapView: View {
     /// that differs between the two contexts.
     private func resultsList(onSelect: @escaping (SearchResult) -> Void) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            ForEach(searchViewModel.results) { result in
+            ForEach(searchViewModel.filteredResults) { result in
                 Button {
                     onSelect(result)
                 } label: {
@@ -390,7 +410,7 @@ struct MapboxMapView: View {
                 }
                 .buttonStyle(.plain)
 
-                if result.id != searchViewModel.results.last?.id {
+                if result.id != searchViewModel.filteredResults.last?.id {
                     Divider()
                         .padding(.leading, 48)
                 }
@@ -558,7 +578,13 @@ struct MapboxMapView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             } else if !searchViewModel.results.isEmpty {
-                resultsList(onSelect: selectDestination)
+                if searchViewModel.categoryTallies.count > 1 {
+                    CategoryPillsView(
+                        categories: searchViewModel.categoryTallies,
+                        selected: $searchViewModel.selectedCategory
+                    )
+                }
+                resultsList(onSelect: { result in selectDestination(result) })
             } else if let message = speechErrorMessage ?? searchViewModel.searchError {
                 Text(message)
                     .font(.caption)
@@ -861,6 +887,11 @@ struct MapboxMapView: View {
 
     private func placeDetailsContent(_ destination: SearchResult) -> some View {
         VStack(alignment: .leading, spacing: 12) {
+            if let enrichment = placeEnrichmentViewModel.enrichment,
+               !enrichment.photoURLs.isEmpty || !enrichment.tips.isEmpty {
+                placeEnrichmentSection(enrichment)
+            }
+
             if let requestError = navigationViewModel.requestError {
                 Text(requestError)
                     .font(.caption)
@@ -897,9 +928,58 @@ struct MapboxMapView: View {
                         routeDetailsBody
                     }
                 }
+            } else if !navigationViewModel.isRequestingRoute && navigationViewModel.requestError == nil {
+                // A tapped basemap POI lands here — selectBasemapPOI deliberately skips the
+                // auto route-preview every other selection path takes, so routing is this
+                // explicit opt-in instead of something that happens the moment you tap a pin.
+                Button {
+                    fetchRoutes(to: destination)
+                } label: {
+                    Label("Directions", systemImage: "arrow.triangle.turn.up.right.circle.fill")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Color.kaidoVioletOnMap)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(Color.kaidoViolet.opacity(0.18), in: RoundedRectangle(cornerRadius: 12))
+                }
+                .buttonStyle(.plain)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Photos and a couple of review snippets from Foursquare — purely additive, so it's skipped
+    /// entirely when nothing came back (feature disabled, no confident match, or still loading).
+    private func placeEnrichmentSection(_ enrichment: FoursquarePlaceEnrichment) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if !enrichment.photoURLs.isEmpty {
+                ScrollView(.horizontal) {
+                    HStack(spacing: 8) {
+                        ForEach(enrichment.photoURLs, id: \.self) { url in
+                            AsyncImage(url: url) { image in
+                                image.resizable().scaledToFill()
+                            } placeholder: {
+                                Color.kaidoInk.opacity(0.07)
+                            }
+                            .frame(width: 120, height: 90)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                        }
+                    }
+                }
+                .scrollIndicators(.hidden)
+            }
+
+            if !enrichment.tips.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(enrichment.tips, id: \.self) { tip in
+                        Text("“\(tip)”")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+        }
     }
 
     private struct PendingRideTogetherCreation {
@@ -1165,6 +1245,19 @@ struct MapboxMapView: View {
                         .font(.caption.weight(.medium))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
+                }
+
+                if let rating = placeEnrichmentViewModel.enrichment?.rating {
+                    HStack(spacing: 4) {
+                        Image(systemName: "star.fill")
+                        Text(String(format: "%.1f", rating))
+                        if let priceLevel = placeEnrichmentViewModel.enrichment?.priceLevel, priceLevel > 0 {
+                            Text("·")
+                            Text(String(repeating: "$", count: priceLevel))
+                        }
+                    }
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
                 }
 
                 if let address = destinationAddress(destination) {
@@ -1676,7 +1769,7 @@ struct MapboxMapView: View {
             .formatted(.measurement(width: .abbreviated, usage: .road))
     }
 
-    private func selectDestination(_ result: SearchResult) {
+    private func selectDestination(_ result: SearchResult, previewRoute: Bool = true) {
         isFreeRideEnabled = false
         isEditingOrigin = false
         discoverViewModel.clear()
@@ -1690,7 +1783,28 @@ struct MapboxMapView: View {
             viewport = .camera(center: result.coordinate, zoom: 15)
                 .padding(.bottom, followBottomPadding)
         }
-        fetchRoutes(to: result)
+        if previewRoute {
+            fetchRoutes(to: result)
+        }
+    }
+
+    /// A rider tapped one of the Standard style's own POI icons on the base map (not a search
+    /// result) — build a lightweight `SearchResult` locally, no network round trip, and show the
+    /// same place card everything else uses, but without auto-starting a route preview.
+    private func selectBasemapPOI(name: String, coordinate: CLLocationCoordinate2D, maki: String?) {
+        guard !isPresentingNavigation else { return }
+        let (iconName, placeCategory) = PlaceCategory.categorize(maki: maki, isPOI: true)
+        let result = SearchResult(
+            id: "basemap:\(coordinate.latitude),\(coordinate.longitude)",
+            name: name,
+            placeFormatted: nil,
+            coordinate: coordinate,
+            category: placeCategory.label,
+            iconName: iconName,
+            isPOI: true,
+            placeCategory: placeCategory
+        )
+        selectDestination(result, previewRoute: false)
     }
 
     private func beginEditingOrigin() {

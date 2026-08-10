@@ -71,6 +71,7 @@ Environment variables (used as answers, required with --non-interactive):
   SUPABASE_HOST, SUPABASE_ANON_KEY   Optional — enables sign-in and Ride Together
   OPENAI_API_KEY                     Optional — AI blurbs in free-ride discover
   SPOTIFY_CLIENT_ID                  Optional — Spotify playback controls
+  FOURSQUARE_API_KEY                 Optional — photos/rating/reviews on place details
 EOF
 }
 
@@ -322,7 +323,7 @@ configure_secrets() {
     # OpenAI key would send real (failing) requests, where an empty one just
     # turns the feature off.
     local key current
-    for key in DEVELOPMENT_TEAM MAPBOX_ACCESS_TOKEN SUPABASE_HOST SUPABASE_ANON_KEY OPENAI_API_KEY SPOTIFY_CLIENT_ID; do
+    for key in DEVELOPMENT_TEAM MAPBOX_ACCESS_TOKEN SUPABASE_HOST SUPABASE_ANON_KEY OPENAI_API_KEY SPOTIFY_CLIENT_ID FOURSQUARE_API_KEY; do
       current="$(get_config_value "$key" "$SECRETS_FILE")"
       is_placeholder "$current" && set_config_value "$key" "" "$SECRETS_FILE"
     done
@@ -350,6 +351,7 @@ configure_secrets() {
   configure_key SUPABASE_ANON_KEY SUPABASE_ANON_KEY "Supabase anon/public key"
   configure_key OPENAI_API_KEY    OPENAI_API_KEY    "OpenAI API key (AI blurbs in free-ride discover)"
   configure_key SPOTIFY_CLIENT_ID SPOTIFY_CLIENT_ID "Spotify client ID (redirect URI kaido://spotify-callback)"
+  configure_key FOURSQUARE_API_KEY FOURSQUARE_API_KEY "Foursquare API key (photos/rating/reviews on place details)"
 
   if [[ -z "$(get_config_value DEVELOPMENT_TEAM "$SECRETS_FILE")" ]]; then
     warn "No DEVELOPMENT_TEAM: signed builds (device, archive) will fail. Simulator builds still work with CODE_SIGNING_ALLOWED=NO."
