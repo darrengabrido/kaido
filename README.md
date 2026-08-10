@@ -13,7 +13,7 @@ Bundle ID: `com.oaktreehouse.kaido`
 - **Destination search** with rich business/POI results (category, address, icon) via the Mapbox Search Box API.
 - **AI discover (free ride mode)** — after the rider explicitly enables Free Ride from the bicycle menu, Kaido surfaces nearby parks, cafes, and attractions based on their location. With an OpenAI API key configured, suggestions include short AI-written blurbs explaining why each stop is worth a visit.
 - **Custom route planning** — draw a route by tapping waypoints on the map, save it, and revisit it later.
-- **Community routes** — the Routes tab's "Community" section surfaces a small, hand-curated set of well-known bike routes bundled with the app, previewable on the map and copyable into your own saved routes with one tap ("Add to My Routes"). No account or network access required — see [`Kaido/RoutePlanner/Community`](Kaido/RoutePlanner/Community).
+- **Community routes** — the Routes tab's "Community" section surfaces a small, hand-curated set of well-known bike routes bundled with the app, plus routes other riders have published from their own saved routes ("Share to Community"). Every entry is previewable on the map and copyable into your own saved routes with one tap ("Add to My Routes"); publishing/removing your own is optional and reuses Ride Together's guest-friendly identity flow. The curated set works with no account or network access — see [`docs/CommunityRoutes.md`](docs/CommunityRoutes.md) for architecture, Supabase setup, and a manual testing checklist.
 - **Ride history** — routes and past rides persist locally and sync across devices via CloudKit.
 - **Live bike telemetry** over Bluetooth LE — speed, cadence, and battery, read from standard Cycling Speed & Cadence and Battery GATT profiles and shown in a heads-up display during navigation.
 - **Optional sign-in** — Sign in with Apple or email/password via Supabase Auth, or skip it entirely and ride as a guest. Guest mode is remembered across launches, and you can sign in later from the Bike tab.
@@ -24,8 +24,8 @@ Bundle ID: `com.oaktreehouse.kaido`
 - SwiftUI, targeting iOS 26+
 - [Mapbox Maps SDK](https://github.com/mapbox/mapbox-maps-ios) (v11) and [Mapbox Navigation SDK](https://github.com/mapbox/mapbox-navigation-ios) (v3)
 - SwiftData with CloudKit sync
-- [Supabase Auth](https://github.com/supabase/supabase-swift) (v2) — Sign in with Apple + email/password, plus anonymous sessions for Ride Together guests
-- Supabase Database + Realtime (Broadcast/Presence) — Ride Together group state and live rider locations
+- [Supabase Auth](https://github.com/supabase/supabase-swift) (v2) — Sign in with Apple + email/password, plus anonymous sessions for Ride Together and Community Routes guests
+- Supabase Database + Realtime (Broadcast/Presence) — Ride Together group state and live rider locations; Supabase Database for user-published Community routes
 - Core Bluetooth (CBCentralManager/CBPeripheral)
 - [XcodeGen](https://github.com/yonaskolb/XcodeGen) — the `.xcodeproj` is generated from `project.yml` and is not checked into git
 
@@ -42,12 +42,12 @@ Kaido/
 ├── Navigation/      Directions/routing and turn-by-turn session view
 ├── Persistence/     SwiftData model container
 ├── RideTogether/    Group-ride domain, Supabase networking, session/location/map/messaging
-├── RoutePlanner/    Route drawing, saved routes list, route detail, bundled Community routes catalog
+├── RoutePlanner/    Route drawing, saved routes list, route detail, plus a Community/ subfolder (curated + user-published community routes, Supabase networking, publish/remove UI)
 └── Theme/           Shared colors and styling
 
-KaidoTests/          Unit tests (state machine, throttling, staleness, dedup, deep links, ...)
+KaidoTests/          Unit tests (state machine, throttling, staleness, dedup, deep links, community routes, ...)
 supabase/            SQL migrations + a manual RLS/RPC verification script for Ride Together
-docs/                Feature docs (Ride Together architecture, setup, testing checklist)
+docs/                Feature docs (Ride Together and Community Routes: architecture, setup, testing checklists)
 ```
 
 ## Getting started
@@ -156,6 +156,14 @@ Reuses the same Supabase project as sign-in — no separate project needed. See
 `supabase/migrations/0001_group_rides.sql`, enabling anonymous sign-ins, and confirming Realtime
 Authorization), plus a two-device manual testing checklist.
 
+### Enabling Community Routes
+
+Also reuses the same Supabase project — no separate project needed, and no setup at all if you're
+happy with just the bundled curated catalog (publishing is the only part that needs a backend). See
+[`docs/CommunityRoutes.md`](docs/CommunityRoutes.md) for the full setup (applying
+`supabase/migrations/0002_community_routes.sql` and enabling anonymous sign-ins), architecture, and
+a manual testing checklist.
+
 ### Running tests
 
 `KaidoTests` covers Ride Together's pure domain/state logic (state machine, route-snapshot
@@ -170,4 +178,4 @@ The `iOS Build` GitHub Actions workflow runs this on every push/PR alongside the
 
 ## Status
 
-Actively in development. Turn-by-turn navigation, bike lane visualization, destination search, route planning, optional sign-in, the BLE scaffold, and an initial Ride Together group-navigation MVP are all working. Live BLE telemetry has not yet been verified against real bike hardware, Sign in with Apple has not yet been verified end-to-end against a configured Supabase project, and Ride Together's Supabase Realtime integration has not yet been exercised against a live project from this environment (see `docs/RideTogether.md`'s Known limitations).
+Actively in development. Turn-by-turn navigation, bike lane visualization, destination search, route planning, optional sign-in, the BLE scaffold, an initial Ride Together group-navigation MVP, and Community routes (curated catalog + user-published) are all working. Live BLE telemetry has not yet been verified against real bike hardware, Sign in with Apple has not yet been verified end-to-end against a configured Supabase project, and neither Ride Together's Supabase Realtime integration nor Community Routes' publish/remove flow (`supabase/migrations/0002_community_routes.sql` and its RLS policies) has yet been exercised against a live project from this environment (see `docs/RideTogether.md`'s and `docs/CommunityRoutes.md`'s Known limitations).
