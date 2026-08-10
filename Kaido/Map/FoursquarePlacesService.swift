@@ -70,18 +70,24 @@ struct FoursquarePlacesService {
     /// One call finds the nearest matching place and asks for rating/price up front — Foursquare
     /// classifies both as Premium fields, but they're requestable via `fields` on search itself,
     /// so this avoids a second `/places/{id}` details round trip just for two numbers.
+    ///
+    /// Requesting `rating`/`price` in `fields` makes this a Premium call regardless of whether
+    /// photos/tips ever get fetched — so `includePremiumFields` has to gate them here too, or
+    /// search itself still 429s on a zero-credit account before `fetchEnrichment` ever reaches
+    /// its own `includePremiumFields` check.
     private func search(
         name: String,
         coordinate: CLLocationCoordinate2D,
         apiKey: String
     ) async -> SearchResponse.Result? {
         guard var components = URLComponents(string: "\(Self.baseURL)/places/search") else { return nil }
+        let fields = Self.includePremiumFields ? "fsq_place_id,rating,price" : "fsq_place_id"
         components.queryItems = [
             URLQueryItem(name: "query", value: name),
             URLQueryItem(name: "ll", value: "\(coordinate.latitude),\(coordinate.longitude)"),
             URLQueryItem(name: "radius", value: "100"),
             URLQueryItem(name: "limit", value: "1"),
-            URLQueryItem(name: "fields", value: "fsq_place_id,rating,price")
+            URLQueryItem(name: "fields", value: fields)
         ]
         guard let url = components.url else { return nil }
 
