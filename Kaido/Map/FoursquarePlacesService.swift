@@ -1,5 +1,8 @@
 import Foundation
 import CoreLocation
+import OSLog
+
+private let logger = Logger(subsystem: "com.oaktreehouse.kaido", category: "foursquare")
 
 /// Photos/rating/reviews for a place, sourced from Foursquare — Mapbox's Search Box API (the
 /// rest of this app's place data) doesn't carry any of this.
@@ -30,20 +33,26 @@ struct FoursquarePlacesService {
     /// Returns `nil` (never throws to the caller) when the feature is disabled, no confident
     /// match is found, or any request fails — the place-details card just omits the section.
     func fetchEnrichment(name: String, coordinate: CLLocationCoordinate2D) async -> FoursquarePlaceEnrichment? {
-        guard let apiKey = Self.apiKey, !apiKey.isEmpty else { return nil }
-
-        guard let match = try? await search(name: name, coordinate: coordinate, apiKey: apiKey) else {
+        guard let apiKey = Self.apiKey, !apiKey.isEmpty else {
+            logger.debug("Disabled — no FOURSQUARE_API_KEY configured.")
             return nil
         }
 
+        guard let match = await search(name: name, coordinate: coordinate, apiKey: apiKey) else {
+            return nil
+        }
+        logger.debug("Matched \"\(name, privacy: .public)\" -> place id \(match.id, privacy: .public), rating=\(match.rating.map(String.init) ?? "nil", privacy: .public), price=\(match.price.map(String.init) ?? "nil", privacy: .public)")
+
         async let photos = fetchPhotos(placeID: match.id, apiKey: apiKey)
         async let tips = fetchTips(placeID: match.id, apiKey: apiKey)
+        let (photoURLs, tipTexts) = await (photos, tips)
+        logger.debug("\(photoURLs.count, privacy: .public) photo(s), \(tipTexts.count, privacy: .public) tip(s) for place id \(match.id, privacy: .public)")
 
         return FoursquarePlaceEnrichment(
             rating: match.rating,
             priceLevel: match.price,
-            photoURLs: await photos,
-            tips: await tips
+            photoURLs: photoURLs,
+            tips: tipTexts
         )
     }
 
@@ -54,7 +63,7 @@ struct FoursquarePlacesService {
         name: String,
         coordinate: CLLocationCoordinate2D,
         apiKey: String
-    ) async throws -> SearchResponse.Result? {
+    ) async -> SearchResponse.Result? {
         guard var components = URLComponents(string: "\(Self.baseURL)/places/search") else { return nil }
         components.queryItems = [
             URLQueryItem(name: "query", value: name),
@@ -65,41 +74,87 @@ struct FoursquarePlacesService {
         ]
         guard let url = components.url else { return nil }
 
-        let (data, response) = try await Self.send(url: url, apiKey: apiKey)
-        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return nil }
+        guard let (data, statusCode) = await Self.send(url: url, apiKey: apiKey, label: "search") else {
+            return nil
+        }
+        guard statusCode == 200 else {
+            logger.error("search HTTP \(statusCode, privacy: .public): \(Self.bodyPreview(data), privacy: .public)")
+            return nil
+        }
 
-        let decoded = try JSONDecoder().decode(SearchResponse.self, from: data)
-        return decoded.results.first
+        do {
+            let decoded = try JSONDecoder().decode(SearchResponse.self, from: data)
+            if decoded.results.isEmpty {
+                logger.debug("search for \"\(name, privacy: .public)\" returned zero results.")
+            }
+            return decoded.results.first
+        } catch {
+            logger.error("search decode failed: \(String(describing: error), privacy: .public) — body: \(Self.bodyPreview(data), privacy: .public)")
+            return nil
+        }
     }
 
     /// Photos and tips are separate, dedicated endpoints in the current Places API (not fields
     /// requestable on search/details) — each keyed by the place id found above.
     private func fetchPhotos(placeID: String, apiKey: String) async -> [URL] {
         guard let url = URL(string: "\(Self.baseURL)/places/\(placeID)/photos") else { return [] }
-        guard let (data, response) = try? await Self.send(url: url, apiKey: apiKey),
-              let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+        guard let (data, statusCode) = await Self.send(url: url, apiKey: apiKey, label: "photos") else {
             return []
         }
-        let decoded = (try? JSONDecoder().decode([PhotoResponse].self, from: data)) ?? []
-        // Foursquare photo URLs are built by concatenating prefix + size + suffix.
-        return decoded.prefix(6).compactMap { URL(string: "\($0.prefix)300x300\($0.suffix)") }
+        guard statusCode == 200 else {
+            logger.error("photos HTTP \(statusCode, privacy: .public): \(Self.bodyPreview(data), privacy: .public)")
+            return []
+        }
+        do {
+            let decoded = try JSONDecoder().decode([PhotoResponse].self, from: data)
+            // Foursquare photo URLs are built by concatenating prefix + size + suffix.
+            return decoded.prefix(6).compactMap { URL(string: "\($0.prefix)300x300\($0.suffix)") }
+        } catch {
+            logger.error("photos decode failed: \(String(describing: error), privacy: .public) — body: \(Self.bodyPreview(data), privacy: .public)")
+            return []
+        }
     }
 
     private func fetchTips(placeID: String, apiKey: String) async -> [String] {
         guard let url = URL(string: "\(Self.baseURL)/places/\(placeID)/tips") else { return [] }
-        guard let (data, response) = try? await Self.send(url: url, apiKey: apiKey),
-              let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+        guard let (data, statusCode) = await Self.send(url: url, apiKey: apiKey, label: "tips") else {
             return []
         }
-        let decoded = (try? JSONDecoder().decode([TipResponse].self, from: data)) ?? []
-        return decoded.prefix(3).map(\.text)
+        guard statusCode == 200 else {
+            logger.error("tips HTTP \(statusCode, privacy: .public): \(Self.bodyPreview(data), privacy: .public)")
+            return []
+        }
+        do {
+            let decoded = try JSONDecoder().decode([TipResponse].self, from: data)
+            return decoded.prefix(3).map(\.text)
+        } catch {
+            logger.error("tips decode failed: \(String(describing: error), privacy: .public) — body: \(Self.bodyPreview(data), privacy: .public)")
+            return []
+        }
     }
 
-    private static func send(url: URL, apiKey: String) async throws -> (Data, URLResponse) {
+    /// Truncated so a large HTML error page (e.g. a misrouted 404) doesn't flood the console.
+    private static func bodyPreview(_ data: Data) -> String {
+        String(decoding: data.prefix(500), as: UTF8.self)
+    }
+
+    /// Returns `nil` only on a transport-level failure (no connectivity, DNS, etc.) — an HTTP
+    /// error status is still a value here, not a thrown error, so callers can log the body.
+    private static func send(url: URL, apiKey: String, label: String) async -> (Data, Int)? {
         var request = URLRequest(url: url)
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue(apiVersion, forHTTPHeaderField: "X-Places-Api-Version")
-        return try await URLSession.shared.data(for: request)
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse else {
+                logger.error("\(label, privacy: .public): non-HTTP response")
+                return nil
+            }
+            return (data, http.statusCode)
+        } catch {
+            logger.error("\(label, privacy: .public) request failed: \(String(describing: error), privacy: .public)")
+            return nil
+        }
     }
 
     private static var apiKey: String? {
