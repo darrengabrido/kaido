@@ -168,7 +168,10 @@ a manual testing checklist.
 
 `KaidoTests` covers Ride Together's pure domain/state logic (state machine, route-snapshot
 Codable round trip, location throttling/staleness, message dedup, deep-link parsing, invite-token
-redaction) against fakes — no live Supabase project, network access, or GPS required:
+redaction) and Community Routes' pure logic (model Codable round trip, curated-catalog sanity,
+`CompositeCommunityRouteService` merge/error-handling, view-model `isMine`/publish/remove,
+Supabase error-message classification) against fakes — no live Supabase project, network access,
+or GPS required:
 
 ```
 xcodebuild -project Kaido.xcodeproj -scheme Kaido -destination "platform=iOS Simulator,name=iPhone 16" test
