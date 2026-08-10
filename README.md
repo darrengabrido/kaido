@@ -13,6 +13,7 @@ Bundle ID: `com.oaktreehouse.kaido`
 - **Destination search** with rich business/POI results (category, address, icon) via the Mapbox Search Box API.
 - **AI discover (free ride mode)** — after the rider explicitly enables Free Ride from the bicycle menu, Kaido surfaces nearby parks, cafes, and attractions based on their location. With an OpenAI API key configured, suggestions include short AI-written blurbs explaining why each stop is worth a visit.
 - **Custom route planning** — draw a route by tapping waypoints on the map, save it, and revisit it later.
+- **Community routes** — the Routes tab's "Community" section surfaces a small, hand-curated set of well-known bike routes bundled with the app, previewable on the map and copyable into your own saved routes with one tap ("Add to My Routes"). No account or network access required — see [`Kaido/RoutePlanner/Community`](Kaido/RoutePlanner/Community).
 - **Ride history** — routes and past rides persist locally and sync across devices via CloudKit.
 - **Live bike telemetry** over Bluetooth LE — speed, cadence, and battery, read from standard Cycling Speed & Cadence and Battery GATT profiles and shown in a heads-up display during navigation.
 - **Optional sign-in** — Sign in with Apple or email/password via Supabase Auth, or skip it entirely and ride as a guest. Guest mode is remembered across launches, and you can sign in later from the Bike tab.
@@ -41,7 +42,7 @@ Kaido/
 ├── Navigation/      Directions/routing and turn-by-turn session view
 ├── Persistence/     SwiftData model container
 ├── RideTogether/    Group-ride domain, Supabase networking, session/location/map/messaging
-├── RoutePlanner/    Route drawing, saved routes list, route detail
+├── RoutePlanner/    Route drawing, saved routes list, route detail, bundled Community routes catalog
 └── Theme/           Shared colors and styling
 
 KaidoTests/          Unit tests (state machine, throttling, staleness, dedup, deep links, ...)
