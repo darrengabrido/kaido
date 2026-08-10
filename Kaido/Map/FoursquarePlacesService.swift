@@ -119,7 +119,12 @@ struct FoursquarePlacesService {
         do {
             let decoded = try JSONDecoder().decode([PhotoResponse].self, from: data)
             // Foursquare photo URLs are built by concatenating prefix + size + suffix.
-            return decoded.prefix(6).compactMap { URL(string: "\($0.prefix)300x300\($0.suffix)") }
+            // Explicit closure return type disambiguates URL(string:) — Foundation now has both
+            // a failable init?(string:) and a non-optional init(string:encodingInvalidCharacters:),
+            // which compactMap's inferred generic return type can't otherwise pick between.
+            return decoded.prefix(6).compactMap { photo -> URL? in
+                URL(string: "\(photo.prefix)300x300\(photo.suffix)")
+            }
         } catch {
             logger.error("photos decode failed: \(String(describing: error), privacy: .public) — body: \(Self.bodyPreview(data), privacy: .public)")
             return []
