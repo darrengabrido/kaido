@@ -24,6 +24,12 @@ struct FoursquarePlacesService {
     /// Foursquare's current API is versioned by date header rather than a URL path segment —
     /// verify this is still the latest version string when wiring in a real API key.
     private static let apiVersion = "2025-06-17"
+    /// Rating, price, photos, and tips are all Premium fields — billed from the first call, no
+    /// free tier, regardless of any free Pro-call balance. Flip this to `true` once billing/
+    /// credits are set up on the Foursquare account. While `false`, only the free Pro-tier
+    /// search call runs, so this is a connectivity check, not the real feature — enrichment
+    /// will always come back empty (no rating, no photos, no tips).
+    private static let includePremiumFields = false
 
     var isEnabled: Bool {
         guard let apiKey = Self.apiKey else { return false }
@@ -42,6 +48,11 @@ struct FoursquarePlacesService {
             return nil
         }
         logger.debug("Matched \"\(name, privacy: .public)\" -> place id \(match.id, privacy: .public), rating=\(match.rating.map(String.init) ?? "nil", privacy: .public), price=\(match.price.map(String.init) ?? "nil", privacy: .public)")
+
+        guard Self.includePremiumFields else {
+            logger.debug("Premium fields disabled (includePremiumFields = false) — skipping photos/tips, matched place confirms free-tier connectivity only.")
+            return FoursquarePlaceEnrichment(rating: nil, priceLevel: nil, photoURLs: [], tips: [])
+        }
 
         async let photos = fetchPhotos(placeID: match.id, apiKey: apiKey)
         async let tips = fetchTips(placeID: match.id, apiKey: apiKey)
