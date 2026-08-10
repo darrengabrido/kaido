@@ -425,6 +425,12 @@ final class SupabaseGroupRideService: GroupRideService, @unchecked Sendable {
 
     private static func mapError(_ error: Error) -> GroupRideServiceError {
         if let serviceError = error as? GroupRideServiceError { return serviceError }
+        // Catch response-parsing failures before the substring heuristics below see their raw,
+        // rider-unfriendly system message (e.g. "The data couldn't be read because it isn't in
+        // the correct format." for malformed/non-JSON bytes).
+        if error is DecodingError { return .decoding }
+        let nsError = error as NSError
+        if nsError.domain == NSCocoaErrorDomain && nsError.code == 3840 { return .decoding }
         let message: String
         if let postgrestError = error as? PostgrestError {
             message = postgrestError.message
