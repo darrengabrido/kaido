@@ -89,6 +89,10 @@ jobs:
           SUPABASE_HOST: ${{ secrets.SUPABASE_HOST }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           SPOTIFY_CLIENT_ID: ${{ secrets.SPOTIFY_CLIENT_ID }}
+          # Optional like OPENAI_API_KEY below, not required like the secrets validated in the
+          # previous step — an unset repo secret just resolves empty and the place-details card
+          # skips the photos/rating section, same as a local build without the key configured.
+          FOURSQUARE_API_KEY: ${{ secrets.FOURSQUARE_API_KEY }}
         run: |
           {
             echo "DEVELOPMENT_TEAM = $APPLE_TEAM_ID"
@@ -96,6 +100,7 @@ jobs:
             echo "SUPABASE_HOST = $SUPABASE_HOST"
             echo "SUPABASE_ANON_KEY = $SUPABASE_ANON_KEY"
             echo "SPOTIFY_CLIENT_ID = $SPOTIFY_CLIENT_ID"
+            echo "FOURSQUARE_API_KEY = $FOURSQUARE_API_KEY"
             echo "OPENAI_API_KEY ="
           } > Config/Secrets.xcconfig
 

@@ -22,6 +22,7 @@ struct MapboxMapView: View {
     @State private var showBikeLanes = true
     @State private var isFreeRideEnabled = false
     @State private var searchViewModel = MapSearchViewModel()
+    @State private var placeEnrichmentViewModel = PlaceEnrichmentViewModel()
     @State private var discoverViewModel = DiscoverViewModel()
     @State private var navigationViewModel = NavigationViewModel()
     @State private var isPresentingNavigation = false
@@ -233,6 +234,11 @@ struct MapboxMapView: View {
             isTurnDetailsExpanded = false
             // Shorter medium detent while a place card is up so the map stays the hero.
             drawerModel.mediumTopFractionOverride = destinationID == nil ? nil : 0.55
+            if let destination = searchViewModel.selectedDestination {
+                placeEnrichmentViewModel.load(for: destination)
+            } else {
+                placeEnrichmentViewModel.clear()
+            }
         }
         // Frame every candidate pin as results come in (or a category pill narrows them),
         // so the rider can see what's nearby without manually panning to find it.
@@ -881,6 +887,11 @@ struct MapboxMapView: View {
 
     private func placeDetailsContent(_ destination: SearchResult) -> some View {
         VStack(alignment: .leading, spacing: 12) {
+            if let enrichment = placeEnrichmentViewModel.enrichment,
+               !enrichment.photoURLs.isEmpty || !enrichment.tips.isEmpty {
+                placeEnrichmentSection(enrichment)
+            }
+
             if let requestError = navigationViewModel.requestError {
                 Text(requestError)
                     .font(.caption)
@@ -935,6 +946,40 @@ struct MapboxMapView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Photos and a couple of review snippets from Foursquare — purely additive, so it's skipped
+    /// entirely when nothing came back (feature disabled, no confident match, or still loading).
+    private func placeEnrichmentSection(_ enrichment: FoursquarePlaceEnrichment) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if !enrichment.photoURLs.isEmpty {
+                ScrollView(.horizontal) {
+                    HStack(spacing: 8) {
+                        ForEach(enrichment.photoURLs, id: \.self) { url in
+                            AsyncImage(url: url) { image in
+                                image.resizable().scaledToFill()
+                            } placeholder: {
+                                Color.kaidoInk.opacity(0.07)
+                            }
+                            .frame(width: 120, height: 90)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                        }
+                    }
+                }
+                .scrollIndicators(.hidden)
+            }
+
+            if !enrichment.tips.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(enrichment.tips, id: \.self) { tip in
+                        Text("“\(tip)”")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+        }
     }
 
     private struct PendingRideTogetherCreation {
@@ -1200,6 +1245,19 @@ struct MapboxMapView: View {
                         .font(.caption.weight(.medium))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
+                }
+
+                if let rating = placeEnrichmentViewModel.enrichment?.rating {
+                    HStack(spacing: 4) {
+                        Image(systemName: "star.fill")
+                        Text(String(format: "%.1f", rating))
+                        if let priceLevel = placeEnrichmentViewModel.enrichment?.priceLevel, priceLevel > 0 {
+                            Text("·")
+                            Text(String(repeating: "$", count: priceLevel))
+                        }
+                    }
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
                 }
 
                 if let address = destinationAddress(destination) {

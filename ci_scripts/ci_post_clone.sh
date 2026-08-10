@@ -46,6 +46,10 @@ brew install xcodegen
   echo "SUPABASE_ANON_KEY = $SUPABASE_ANON_KEY"
   echo "SPOTIFY_CLIENT_ID = $SPOTIFY_CLIENT_ID"
   echo "CODE_SIGN_STYLE = ${CODE_SIGN_STYLE:-Automatic}"
+  # Optional, like OPENAI_API_KEY below — unlike that one, thread it through if an Xcode Cloud
+  # environment variable happens to be set, since this feature (unlike AI blurbs) is meant to
+  # work in real distributed builds; an unset/blank value just degrades gracefully at runtime.
+  echo "FOURSQUARE_API_KEY = ${FOURSQUARE_API_KEY:-}"
   # Intentionally always blank — see README's TestFlight deployment section.
   echo "OPENAI_API_KEY ="
 } > Config/Secrets.xcconfig

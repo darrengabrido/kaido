@@ -48,6 +48,7 @@ targets:
         SupabaseAnonKey: "$(SUPABASE_ANON_KEY)"
         OpenAIAPIKey: "$(OPENAI_API_KEY)"
         SpotifyClientID: "$(SPOTIFY_CLIENT_ID)"
+        FoursquareAPIKey: "$(FOURSQUARE_API_KEY)"
         NSLocationWhenInUseUsageDescription: "Kaido needs your location to show you on the map and provide turn-by-turn navigation."
         NSLocationAlwaysAndWhenInUseUsageDescription: "Kaido needs your location to track your ride and keep navigating while your phone is locked or in your pocket."
         NSBluetoothAlwaysUsageDescription: "Kaido connects to your bike over Bluetooth to show live speed and battery data."

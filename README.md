@@ -10,7 +10,7 @@ Bundle ID: `com.oaktreehouse.kaido`
 
 - **Turn-by-turn navigation** with recommended route alternatives shown before you commit, powered by the Mapbox Navigation SDK.
 - **Cycling map options** — tap the bicycle control to independently show bike lanes and paths or opt into Free Ride mode.
-- **Destination search** with rich business/POI results (category, address, icon) via the Mapbox Search Box API.
+- **Destination search** with rich business/POI results (category, address, icon) via the Mapbox Search Box API. Tap a place's icon directly on the map, a search result, or a saved place to open its details card; with a Foursquare API key configured, the card also shows photos, rating, and a couple of review snippets.
 - **AI discover (free ride mode)** — after the rider explicitly enables Free Ride from the bicycle menu, Kaido surfaces nearby parks, cafes, and attractions based on their location. With an OpenAI API key configured, suggestions include short AI-written blurbs explaining why each stop is worth a visit.
 - **Custom route planning** — draw a route by tapping waypoints on the map, save it, and revisit it later.
 - **Ride history** — routes and past rides persist locally and sync across devices via CloudKit.
@@ -77,7 +77,7 @@ Two Mapbox tokens are involved and they are **not** interchangeable:
 | Public `pk.` access token | `MAPBOX_ACCESS_TOKEN` in `Config/Secrets.xcconfig` | Used by the app at runtime to load maps, search, and directions |
 | Secret `sk.` token with the `DOWNLOADS:READ` scope | `~/.netrc` | Mapbox ships its SDKs as binary Swift packages behind an authenticated download, so this is needed just to compile — without it, package resolution fails with a 403 |
 
-Supabase credentials are optional — leave them blank and the app still builds and runs, with sign-in disabled and guest mode always available. An OpenAI API key is also optional — without it, free-ride discover still works using nearby Mapbox POIs and built-in suggestion heuristics. A Spotify client ID is optional too; without it the media bar simply won't connect.
+Supabase credentials are optional — leave them blank and the app still builds and runs, with sign-in disabled and guest mode always available. An OpenAI API key is also optional — without it, free-ride discover still works using nearby Mapbox POIs and built-in suggestion heuristics. A Spotify client ID is optional too; without it the media bar simply won't connect. A Foursquare API key is optional as well; without it, the place-details card just omits photos/rating/reviews.
 
 To regenerate the project after changing `project.yml` (targets, permissions, entitlements, etc.), re-run `xcodegen generate` — or `scripts/setup.sh`, which does that and re-resolves packages.
 
@@ -122,6 +122,7 @@ Before running it, confirm App Store Connect has **Kaido Ride** for bundle ID `c
 | `SUPABASE_HOST` | Supabase host only (e.g. `abcdefgh.supabase.co`, no `https://`) |
 | `SUPABASE_ANON_KEY` | Supabase `anon`/`public` API key |
 | `SPOTIFY_CLIENT_ID` | Spotify app Client ID (Redirect URI must be `kaido://spotify-callback`) |
+| `FOURSQUARE_API_KEY` | Optional — Foursquare Places API key, adds photos/rating/reviews to the place details card. Omit it and the deploy still succeeds; the card just won't show that section. |
 
 The App Store provisioning profile must include the **iCloud** container `iCloud.com.oaktreehouse.kaido` (CloudKit), **Push Notifications**, and **Sign in with Apple**. If archive fails with an iCloud container mismatch, edit the App ID in the Apple Developer portal, regenerate the App Store profile, and update `APP_STORE_PROVISIONING_PROFILE_BASE64`.
 
@@ -147,6 +148,12 @@ Sign in with Apple only works end-to-end on a device or simulator signed into an
 2. **Edit Settings** on that app → add `kaido://spotify-callback` under **Redirect URIs**, and add `com.oaktreehouse.kaido` under **Platforms → iOS → Bundle ID**.
 
 Both are required, but the iOS Bundle ID is easy to miss since it lives on a separate tab from Redirect URIs. If it's missing or stale, Connect still bounces out to the Spotify app successfully, but the redirect back to Kaido carries an error instead of a token — surfacing as a generic `error_description: "An unknown error has occured"` in the Debug Log (Profile → Debug Log) rather than anything naming the mismatch.
+
+### Enabling Foursquare place details
+
+1. **Foursquare Developer Console** — [create an API key](https://foursquare.com/developers/) for the current Places API (`places-api.foursquare.com`), not the deprecated v3 API, then copy it into `FOURSQUARE_API_KEY` in `Config/Secrets.xcconfig`.
+
+Without it, place-details cards just don't show a photos/rating/reviews section — nothing else about the app depends on it.
 
 ### Enabling Ride Together
 
