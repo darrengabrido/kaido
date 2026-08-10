@@ -427,10 +427,13 @@ final class SupabaseGroupRideService: GroupRideService, @unchecked Sendable {
         if let serviceError = error as? GroupRideServiceError { return serviceError }
         // Catch response-parsing failures before the substring heuristics below see their raw,
         // rider-unfriendly system message (e.g. "The data couldn't be read because it isn't in
-        // the correct format." for malformed/non-JSON bytes).
-        if error is DecodingError { return .decoding }
+        // the correct format." for malformed/non-JSON bytes). The underlying error is logged
+        // since it's otherwise invisible without an attached debugger — see `DebugLogView`.
         let nsError = error as NSError
-        if nsError.domain == NSCocoaErrorDomain && nsError.code == 3840 { return .decoding }
+        if error is DecodingError || (nsError.domain == NSCocoaErrorDomain && nsError.code == 3840) {
+            DebugLog.shared.log("Response failed to decode: \(error)", category: "RideTogether")
+            return .decoding
+        }
         let message: String
         if let postgrestError = error as? PostgrestError {
             message = postgrestError.message
