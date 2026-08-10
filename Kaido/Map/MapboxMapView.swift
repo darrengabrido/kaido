@@ -186,14 +186,18 @@ struct MapboxMapView: View {
         .task {
             discoverViewModel.refreshIfNeeded(
                 location: locationManager.currentLocation,
-                isFreeRideMode: shouldShowDiscover
+                isFreeRideMode: shouldShowDiscover,
+                ridePurpose: riderProfiles.first?.ridePurpose,
+                interestTags: riderProfiles.first?.interestTags ?? []
             )
         }
         .onChange(of: locationManager.currentLocation?.coordinate.latitude) { _, _ in
             searchViewModel.proximity = locationManager.currentLocation?.coordinate
             discoverViewModel.refreshIfNeeded(
                 location: locationManager.currentLocation,
-                isFreeRideMode: shouldShowDiscover
+                isFreeRideMode: shouldShowDiscover,
+                ridePurpose: riderProfiles.first?.ridePurpose,
+                interestTags: riderProfiles.first?.interestTags ?? []
             )
             // Destination may have been picked before the first fix arrived — preview now.
             if let destination = searchViewModel.selectedDestination,
@@ -216,7 +220,9 @@ struct MapboxMapView: View {
             if inFreeRide {
                 discoverViewModel.refreshIfNeeded(
                     location: locationManager.currentLocation,
-                    isFreeRideMode: true
+                    isFreeRideMode: true,
+                    ridePurpose: riderProfiles.first?.ridePurpose,
+                    interestTags: riderProfiles.first?.interestTags ?? []
                 )
             } else {
                 discoverViewModel.clear()
@@ -1817,7 +1823,9 @@ struct MapboxMapView: View {
             clearDestination()
             discoverViewModel.refreshIfNeeded(
                 location: locationManager.currentLocation,
-                isFreeRideMode: true
+                isFreeRideMode: true,
+                ridePurpose: riderProfiles.first?.ridePurpose,
+                interestTags: riderProfiles.first?.interestTags ?? []
             )
         } else {
             discoverViewModel.clear()

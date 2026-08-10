@@ -14,6 +14,8 @@ struct RiderProfileEditorView: View {
     @State private var homeCity: String
     @State private var bio: String
     @State private var experienceLevel: RiderExperienceLevel
+    @State private var ridePurpose: RidePurpose?
+    @State private var selectedInterestTags: Set<InterestTag>
     @State private var photoImage: UIImage?
     @State private var photoChanged = false
     @State private var selectedPhotoItem: PhotosPickerItem?
@@ -33,6 +35,8 @@ struct RiderProfileEditorView: View {
         _homeCity = State(initialValue: profile.homeCity)
         _bio = State(initialValue: profile.bio)
         _experienceLevel = State(initialValue: profile.experienceLevel)
+        _ridePurpose = State(initialValue: profile.ridePurpose)
+        _selectedInterestTags = State(initialValue: Set(profile.interestTags))
         _photoImage = State(initialValue: profile.photoData.flatMap(UIImage.init(data:)))
     }
 
@@ -100,6 +104,31 @@ struct RiderProfileEditorView: View {
                 }
                 .pickerStyle(.inline)
                 .labelsHidden()
+            }
+
+            Section("Ride purpose") {
+                Picker("Purpose", selection: $ridePurpose) {
+                    Text("Not set").tag(RidePurpose?.none)
+                    ForEach(RidePurpose.allCases) { purpose in
+                        Label(purpose.title, systemImage: purpose.systemImage)
+                            .tag(RidePurpose?.some(purpose))
+                    }
+                }
+                .pickerStyle(.inline)
+                .labelsHidden()
+            }
+
+            Section {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 110), spacing: 8)], spacing: 8) {
+                    ForEach(InterestTag.allCases) { tag in
+                        interestTagChip(tag)
+                    }
+                }
+                .listRowBackground(Color.clear)
+            } header: {
+                Text("What are you into?")
+            } footer: {
+                Text("Helps tailor the stops Discover suggests during free rides.")
             }
         }
         .navigationTitle(profile.displayName.isEmpty ? "Add Profile" : "Edit Profile")
@@ -197,6 +226,27 @@ struct RiderProfileEditorView: View {
         .photosPicker(isPresented: $isPresentingPhotoPicker, selection: $selectedPhotoItem, matching: .images)
     }
 
+    private func interestTagChip(_ tag: InterestTag) -> some View {
+        let isSelected = selectedInterestTags.contains(tag)
+        return Button {
+            if isSelected {
+                selectedInterestTags.remove(tag)
+            } else {
+                selectedInterestTags.insert(tag)
+            }
+        } label: {
+            Label(tag.title, systemImage: tag.systemImage)
+                .font(.subheadline)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .frame(maxWidth: .infinity)
+                .background(isSelected ? Color.kaidoViolet : Color(.systemGray5), in: Capsule())
+                .foregroundStyle(isSelected ? .white : .primary)
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
     private var editBadge: some View {
         Image(systemName: "camera.fill")
             .font(.system(size: 12, weight: .semibold))
@@ -214,6 +264,8 @@ struct RiderProfileEditorView: View {
         profile.homeCity = homeCity.trimmingCharacters(in: .whitespacesAndNewlines)
         profile.bio = bio.trimmingCharacters(in: .whitespacesAndNewlines)
         profile.experienceLevel = experienceLevel
+        profile.ridePurpose = ridePurpose
+        profile.interestTags = InterestTag.allCases.filter { selectedInterestTags.contains($0) }
         if photoChanged {
             profile.photoData = photoImage?.jpegData(compressionQuality: Self.jpegQuality)
         }
