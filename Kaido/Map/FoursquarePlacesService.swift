@@ -47,7 +47,7 @@ struct FoursquarePlacesService {
         guard let match = await search(name: name, coordinate: coordinate, apiKey: apiKey) else {
             return nil
         }
-        logger.debug("Matched \"\(name, privacy: .public)\" -> place id \(match.id, privacy: .public), rating=\(match.rating.map(String.init) ?? "nil", privacy: .public), price=\(match.price.map(String.init) ?? "nil", privacy: .public)")
+        logger.debug("Matched \"\(name, privacy: .public)\" -> place id \(match.id, privacy: .public), rating=\(match.rating.map { "\($0)" } ?? "nil", privacy: .public), price=\(match.price.map { "\($0)" } ?? "nil", privacy: .public)")
 
         guard Self.includePremiumFields else {
             logger.debug("Premium fields disabled (includePremiumFields = false) — skipping photos/tips, matched place confirms free-tier connectivity only.")
