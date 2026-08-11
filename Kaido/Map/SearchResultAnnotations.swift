@@ -43,7 +43,7 @@ private struct SearchResultMarker: View {
                     .lineLimit(1)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 3)
-                    .background(Color.white.opacity(0.92), in: Capsule())
+                    .background(Color.kaidoMidnight.opacity(0.92), in: Capsule())
                     .shadow(color: .black.opacity(0.22), radius: 2, y: 1)
             }
         }
