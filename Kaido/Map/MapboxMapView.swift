@@ -49,6 +49,15 @@ struct MapboxMapView: View {
     @State private var isEditingOrigin = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    /// Live camera center, updated (debounced, and only while not follow-tracking) so "Search
+    /// this area" can compare it against the last search's proximity without re-rendering the
+    /// map subtree on every pan frame.
+    @State private var liveMapCenter: CLLocationCoordinate2D?
+    @State private var cameraCenterUpdateTask: Task<Void, Never>?
+    /// How far the map has to drift from the last search's center before re-searching that spot
+    /// is worth offering — small pans within the same neighborhood shouldn't nag.
+    private static let searchThisAreaThreshold: CLLocationDistance = 500
+
     // Ride Together
     @State private var isPresentingRideTogetherLobby = false
     @State private var isPresentingRideTogetherNamePrompt = false
@@ -100,12 +109,25 @@ struct MapboxMapView: View {
             && searchViewModel.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    /// True once the rider has panned away from wherever the current search actually looked,
+    /// mirroring Google Maps' "Search this area" affordance.
+    private var shouldShowSearchThisArea: Bool {
+        guard isEditingOrigin || searchViewModel.selectedDestination == nil,
+              !searchViewModel.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              let liveMapCenter, let lastSearchProximity = searchViewModel.lastSearchProximity
+        else { return false }
+        let current = CLLocation(latitude: liveMapCenter.latitude, longitude: liveMapCenter.longitude)
+        let searched = CLLocation(latitude: lastSearchProximity.latitude, longitude: lastSearchProximity.longitude)
+        return current.distance(from: searched) > Self.searchThisAreaThreshold
+    }
+
     var body: some View {
         ZStack(alignment: .top) {
             KaidoMapCanvas(
                 viewport: $viewport,
                 showBikeLanes: showBikeLanes,
                 selectedDestination: searchViewModel.selectedDestination,
+                searchResults: searchViewModel.results,
                 routeOptions: navigationViewModel.routeOptions,
                 onSelectRoute: { option in
                     Task {
@@ -113,7 +135,9 @@ struct MapboxMapView: View {
                         overviewSelectedRoute()
                         expandRouteDetails()
                     }
-                }
+                },
+                onSelectSearchResult: selectSearchResultFromMap,
+                onCameraCenterChanged: handleCameraCenterChanged
             )
 
             // Recenter sits above the cycling menu so riders can recover follow after a pan.
@@ -169,12 +193,20 @@ struct MapboxMapView: View {
                     .padding(.trailing, 16)
             }
 
+            if shouldShowSearchThisArea {
+                SearchThisAreaButton(action: searchThisArea)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    .padding(.top, 16)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+
             // Full-bleed: flush to the left, right, and bottom edges in every state, with no
             // external margins. Rounded corners live on the drawer's own surface.
             mapDrawer
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                 .zIndex(2)
         }
+        .animation(.easeOut(duration: 0.2), value: shouldShowSearchThisArea)
         // Geometry now comes from the drawer's own view controller, in viewDidLayoutSubviews,
         // so there's a single source for it rather than two that can disagree.
         .onAppear {
@@ -1674,6 +1706,34 @@ struct MapboxMapView: View {
     private func formattedDistance(_ meters: Double) -> String {
         Measurement(value: meters, unit: UnitLength.meters)
             .formatted(.measurement(width: .abbreviated, usage: .road))
+    }
+
+    /// Routes a tap on a map pin to whichever field is actually being searched right now —
+    /// origin or destination — same as tapping the matching row in the drawer's results list.
+    private func selectSearchResultFromMap(_ result: SearchResult) {
+        if isEditingOrigin {
+            selectOrigin(result)
+        } else {
+            selectDestination(result)
+        }
+    }
+
+    /// Debounces raw per-frame camera events into an occasional state write, and skips them
+    /// entirely while the camera is follow-tracking the rider — the one case where firing on
+    /// every frame would actually cost something.
+    private func handleCameraCenterChanged(_ coordinate: CLLocationCoordinate2D) {
+        guard viewport.followPuck == nil else { return }
+        cameraCenterUpdateTask?.cancel()
+        cameraCenterUpdateTask = Task {
+            try? await Task.sleep(for: .milliseconds(250))
+            guard !Task.isCancelled else { return }
+            liveMapCenter = coordinate
+        }
+    }
+
+    private func searchThisArea() {
+        guard let liveMapCenter else { return }
+        searchViewModel.researchCurrentQuery(at: liveMapCenter)
     }
 
     private func selectDestination(_ result: SearchResult) {
