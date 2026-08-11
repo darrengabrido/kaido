@@ -12,7 +12,7 @@ individual decisions; this document covers setup, architecture, and what to veri
 - **Domain** (`Kaido/RoutePlanner/Community/CommunityRoute.swift`) — `CommunityRoute`, a plain
   `Codable` value type mirroring the `community_routes` table columns exactly (see the migration
   below), plus `CommunityRouteStatus`.
-- **Seed content** (`Kaido/RoutePlanner/Community/CuratedCommunityRoutes.swift`) — a dozen
+- **Seed content** (`Kaido/RoutePlanner/Community/CuratedCommunityRoutes.swift`) — sixteen
   well-known, real routes (heavily weighted toward California) bundled directly into the app, each
   with distance/elevation from a single cited official or GPS-tracked source and waypoints at real,
   verified landmark coordinates. Shaped as ordinary `CommunityRoute` values with a fixed, never-real

@@ -1,11 +1,11 @@
 import Foundation
 
-/// Seed content for the Routes tab's "Community" section: a dozen well-known, real bike routes
+/// Seed content for the Routes tab's "Community" section: sixteen well-known, real bike routes
 /// bundled directly into the app so the feed is never empty even before any rider has published
 /// one of their own (see `CompositeCommunityRouteService`, which merges this catalog with
-/// whatever's been published to Supabase). Skews heavily toward California — eight of the twelve
-/// routes are there — with one route each in New York, Illinois, Washington, and Texas rounding
-/// out the set.
+/// whatever's been published to Supabase). Skews heavily toward California — eight of the sixteen
+/// routes are there — with one route each in New York, Illinois, Washington, Texas,
+/// Massachusetts, Oregon, Florida, and Virginia rounding out the set.
 ///
 /// Every route below corresponds to an actual, named public trail. Distance and elevation gain
 /// are taken from a single official or GPS-tracked source per route (cited above each entry)
@@ -249,6 +249,81 @@ enum CuratedCommunityRoutes {
                 (36.9602, -122.0204),
                 (36.9513, -122.0266),
                 (36.9525, -122.0575)
+            ]
+        ),
+
+        // Beyond California, round two — filling in more of the map.
+        //
+        // Distance/elevation: AllTrails' GPS-tracked "Minuteman Bikeway" route, 10.1 mi / 282 ft
+        // gain, on the former Boston & Maine rail bed. Waypoints: Bedford Depot Park (the trail's
+        // northern trailhead), Lexington Center near the historic Lexington Depot, Arlington
+        // Center, and the Alewife MBTA station at the southern end in Cambridge.
+        makeRoute(
+            id: "3F2B9C10-6E4A-4B8E-9C2D-00000000000D",
+            name: "Minuteman Bikeway",
+            description: "Boston area, MA — a flat former rail trail from Bedford Depot Park "
+                + "through Lexington Center and Arlington Center down to the Alewife MBTA station "
+                + "in Cambridge.",
+            distanceMeters: 16_253,
+            elevationGainMeters: 86,
+            waypoints: [
+                (42.4906, -71.2761),
+                (42.4485, -71.2288),
+                (42.4153, -71.1567),
+                (42.3954, -71.1409)
+            ]
+        ),
+        // Distance/elevation: Wikipedia/TrailLink's figure for the full Springwater Corridor —
+        // 21.3 mi / 200 ft gain, a former railway with only minimal grades. Waypoints: the
+        // trailhead near OMSI on Portland's Eastbank Esplanade, the Sellwood neighborhood partway
+        // along, Gresham's Main City Park, and the Boring trailhead at the trail's eastern end.
+        makeRoute(
+            id: "3F2B9C10-6E4A-4B8E-9C2D-00000000000E",
+            name: "Springwater Corridor",
+            description: "Portland, OR — a flat former rail trail from the Eastbank Esplanade "
+                + "near OMSI through Sellwood and Gresham's Main City Park out to Boring.",
+            distanceMeters: 34_278,
+            elevationGainMeters: 61,
+            waypoints: [
+                (45.5075, -122.6656),
+                (45.4713, -122.6580),
+                (45.5017, -122.4302),
+                (45.4304, -122.3775)
+            ]
+        ),
+        // Distance: Florida Rambler / Pigeon Key Visitors Center's figure for the renovated Old
+        // Seven Mile Bridge linear park — 2.2 mi one-way, Knight's Key to Pigeon Key. Elevation is
+        // nominal — a sea-level highway bridge with only the slight arc built in for boat
+        // clearance. Waypoints: the Knight's Key trailhead in Marathon and Pigeon Key itself,
+        // the historic work-camp island the bridge was built to serve.
+        makeRoute(
+            id: "3F2B9C10-6E4A-4B8E-9C2D-00000000000F",
+            name: "Old Seven Mile Bridge",
+            description: "Florida Keys — ride out over open water on the historic, car-free "
+                + "span of the old Seven Mile Bridge from Knight's Key in Marathon to Pigeon Key.",
+            distanceMeters: 3_541,
+            elevationGainMeters: 6,
+            waypoints: [
+                (24.7133, -81.1725),
+                (24.7046, -81.15535)
+            ]
+        ),
+        // Distance/elevation: Wikipedia's Mount Vernon Trail entry — 18 mi / 328 ft gain, Rosslyn
+        // to Mount Vernon along the Potomac. Waypoints: Theodore Roosevelt Island at the trail's
+        // northern end in Arlington, the Old Town Alexandria waterfront partway down, and George
+        // Washington's Mount Vernon estate at the southern terminus.
+        makeRoute(
+            id: "3F2B9C10-6E4A-4B8E-9C2D-000000000010",
+            name: "Mount Vernon Trail",
+            description: "Washington, DC area, VA — a riverside ride along the Potomac from "
+                + "Theodore Roosevelt Island through Old Town Alexandria's waterfront down to "
+                + "George Washington's Mount Vernon estate.",
+            distanceMeters: 28_968,
+            elevationGainMeters: 100,
+            waypoints: [
+                (38.8973, -77.0611),
+                (38.8048, -77.0378),
+                (38.7293, -77.0871)
             ]
         )
     ]
