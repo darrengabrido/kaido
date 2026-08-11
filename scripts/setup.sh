@@ -71,6 +71,9 @@ Environment variables (used as answers, required with --non-interactive):
   SUPABASE_HOST, SUPABASE_ANON_KEY   Optional — enables sign-in and Ride Together
   OPENAI_API_KEY                     Optional — AI blurbs in free-ride discover
   SPOTIFY_CLIENT_ID                  Optional — Spotify playback controls
+
+Once set up, build and run on a connected iPhone with:
+  scripts/run_on_device.sh
 EOF
 }
 
@@ -451,6 +454,9 @@ summary() {
   info "  open $XCODEPROJ"
   info "  xcodebuild -project $XCODEPROJ -scheme Kaido \\"
   info "    -destination \"platform=iOS Simulator,name=iPhone 17\" test"
+  printf '\n'
+  info "On a physical iPhone (plug it in, unlock it, trust this Mac):"
+  info "  scripts/run_on_device.sh"
   printf '\n'
   note "Secrets live in $SECRETS_FILE (gitignored). Re-run with --reconfigure to change them."
 
