@@ -153,3 +153,5 @@ extension MediaPlayerManager: SPTAppRemotePlayerStateDelegate {
         apply(playerState)
     }
 }
+
+extension MediaPlayerManager: NowPlayingProviding {}

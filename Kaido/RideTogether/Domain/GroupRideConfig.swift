@@ -19,6 +19,9 @@ enum GroupRideConfig {
     static let maxCustomQuickReplies = 6
     static let maxCustomQuickReplyLength = 40
 
+    /// Maximum characters for the locally-chosen Ride Together display name.
+    static let maxDisplayNameLength = 30
+
     /// Default lifetime of a freshly created or rotated invite.
     static let defaultInviteLifetime: TimeInterval = 24 * 60 * 60
 
