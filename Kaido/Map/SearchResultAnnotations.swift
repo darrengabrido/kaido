@@ -29,7 +29,10 @@ private struct SearchResultMarker: View {
             VStack(spacing: 4) {
                 Image(systemName: result.iconName)
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Color.white)
+                    // kaidoVioletOnMap is a bright, pastel fill — a light glyph on top of it
+                    // reads as washed out, so the icon goes dark instead of following the
+                    // white-on-saturated-fill treatment used for statusGood/statusCritical pins.
+                    .foregroundStyle(Color.kaidoMidnight)
                     .frame(width: 26, height: 26)
                     .background(Color.kaidoVioletOnMap, in: Circle())
                     .overlay {
