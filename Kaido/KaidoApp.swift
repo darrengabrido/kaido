@@ -28,6 +28,7 @@ struct KaidoApp: App {
             switch phase {
             case .active:
                 MediaPlayerManager.shared.reconnectIfPossible()
+                AppleMusicManager.shared.refreshAuthorizationStatus()
                 Task { await rideTogetherSession.handleAppForeground() }
             case .background: MediaPlayerManager.shared.disconnect()
             default: break

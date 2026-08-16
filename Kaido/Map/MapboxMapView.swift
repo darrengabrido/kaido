@@ -886,20 +886,16 @@ struct MapboxMapView: View {
                 preferenceAndPaceRow
                 routeSummaryStrip
 
-                if let rideTogetherErrorMessage {
-                    Text(rideTogetherErrorMessage)
-                        .font(.caption)
-                        .foregroundStyle(Color.statusCritical)
-                }
-
-                // Keep Ride Together paired with GO so expanding Steps doesn't bury it.
-                rideTogetherButton
-
                 if isRouteDetailsExpanded {
                     if navigationViewModel.routeOptions.count > 1 {
+                        // Multiple options: pick one, then dig into hills/steps for it.
                         lightAlternatesList
+                        routeDetailsDisclosure
+                    } else {
+                        // Only one route — the nested "Route details" toggle would just be a
+                        // second tap to see the same thing the outer expand already promised.
+                        routeDetailsBody
                     }
-                    routeDetailsDisclosure
                 }
             }
         }
@@ -922,8 +918,8 @@ struct MapboxMapView: View {
         }
     }
 
-    /// Secondary to GO. Riding solo is the common case, so the summary strip carries the
-    /// primary action and this stays a plain, quieter text control underneath.
+    /// Secondary to GO, and tucked inside Route details rather than pinned under the summary —
+    /// riding solo is the common case, so this only costs a tap for riders who actually want it.
     private var rideTogetherButton: some View {
         Button {
             Task { await startRideTogetherFlow() }
@@ -1280,44 +1276,37 @@ struct MapboxMapView: View {
     private var routeSummaryStrip: some View {
         if let option = navigationViewModel.routeOptions.first(where: \.isMain) {
             HStack(alignment: .center, spacing: 14) {
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                // The whole summary — not a separate icon — is the expand/collapse target, so
+                // there's no dedicated affordance competing with GO for attention.
+                Button {
+                    toggleRouteDetailsExpanded()
+                } label: {
+                    VStack(alignment: .leading, spacing: 6) {
                         Text(Self.formattedDuration(option.personalizedTravelTime))
                             .font(.system(size: 34, weight: .bold, design: .rounded))
                             .foregroundStyle(Color.primary)
                             .minimumScaleFactor(0.7)
                             .lineLimit(1)
 
-                        Spacer(minLength: 0)
+                        Text(routeSummaryMeta(for: option))
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
 
-                        Button {
-                            toggleRouteDetailsExpanded()
-                        } label: {
-                            Image(systemName: "chevron.down")
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundStyle(Color.kaidoDim)
-                                .rotationEffect(.degrees(isRouteDetailsExpanded ? 0 : -90))
-                                .frame(width: 28, height: 28)
-                                .background(Color.kaidoInk.opacity(0.07), in: Circle())
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Other routes")
-                        .accessibilityValue(isRouteDetailsExpanded ? "Expanded" : "Collapsed")
-                        .accessibilityHint("Double tap to show or hide alternate routes and route details")
+                        RouteStressBar(
+                            quiet: option.stressProfile.quietFraction,
+                            mixed: option.stressProfile.mixedFraction,
+                            busy: option.stressProfile.busyFraction
+                        )
+                        .padding(.top, 2)
                     }
-
-                    Text(routeSummaryMeta(for: option))
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-
-                    RouteStressBar(
-                        quiet: option.stressProfile.quietFraction,
-                        mixed: option.stressProfile.mixedFraction,
-                        busy: option.stressProfile.busyFraction
-                    )
-                    .padding(.top, 2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Other routes")
+                .accessibilityValue(isRouteDetailsExpanded ? "Expanded" : "Collapsed")
+                .accessibilityHint("Double tap to show or hide alternate routes and route details")
 
                 goButton
             }
@@ -1385,10 +1374,25 @@ struct MapboxMapView: View {
             .accessibilityHint("Double tap to show or hide hills and turn-by-turn steps")
 
             if isTurnDetailsExpanded {
-                hillsDetailRow
-                routeStepsSection
+                routeDetailsBody
             }
         }
+    }
+
+    /// Ride Together, hills, and steps — shown either under the nested "Route details" toggle
+    /// (when there are alternates to pick between first) or directly under the outer expand
+    /// (when there's only one route, so that extra toggle would be redundant).
+    @ViewBuilder
+    private var routeDetailsBody: some View {
+        if let rideTogetherErrorMessage {
+            Text(rideTogetherErrorMessage)
+                .font(.caption)
+                .foregroundStyle(Color.statusCritical)
+        }
+        rideTogetherButton
+        Divider().opacity(0.35)
+        hillsDetailRow
+        routeStepsSection
     }
 
     /// Expanded hills block — label, gain/loss, and Terrain sparkline when samples exist.

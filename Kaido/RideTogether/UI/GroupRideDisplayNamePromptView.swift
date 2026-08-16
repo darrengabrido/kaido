@@ -25,12 +25,7 @@ struct GroupRideDisplayNamePromptView: View {
                     .multilineTextAlignment(.center)
             }
 
-            TextField("Your name", text: $name)
-                .textFieldStyle(.roundedBorder)
-                .focused($isFocused)
-                .submitLabel(.done)
-                .onSubmit(submit)
-                .accessibilityLabel("Your display name for this ride")
+            field
 
             Button {
                 submit()
@@ -38,9 +33,9 @@ struct GroupRideDisplayNamePromptView: View {
                 Text("Continue")
                     .font(.headline)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
+                    .frame(height: 28)
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.glassProminent)
             .tint(.kaidoViolet)
             .disabled(trimmedName.isEmpty)
 
@@ -50,6 +45,30 @@ struct GroupRideDisplayNamePromptView: View {
         .presentationDetents([.medium])
         .presentationDragIndicator(.visible)
         .task { isFocused = true }
+    }
+
+    private var field: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "person.fill")
+                .foregroundStyle(.secondary)
+                .frame(width: 20)
+            TextField("Your name", text: $name)
+                .textContentType(.name)
+                .textInputAutocapitalization(.words)
+                .autocorrectionDisabled()
+                .submitLabel(.done)
+                .focused($isFocused)
+                .onSubmit(submit)
+                .onChange(of: name) { _, value in
+                    if value.count > GroupRideConfig.maxDisplayNameLength {
+                        name = String(value.prefix(GroupRideConfig.maxDisplayNameLength))
+                    }
+                }
+                .accessibilityLabel("Your display name for this ride")
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .glassEffect(.regular, in: .rect(cornerRadius: 16))
     }
 
     private func submit() {
