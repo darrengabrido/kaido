@@ -5,7 +5,7 @@ struct ProfileView: View {
     @Environment(AuthState.self) private var authState
     @Environment(\.modelContext) private var modelContext
     @Query private var riderProfiles: [RiderProfile]
-    private let sourceManager = MusicSourceManager.shared
+    @Bindable private var sourceManager = MusicSourceManager.shared
 
     var body: some View {
         NavigationStack {
@@ -103,10 +103,17 @@ struct ProfileView: View {
                 }
             }
             .pickerStyle(.segmented)
+            .accessibilityLabel("Music source")
 
-            MusicConnectionRow(source: sourceManager.selectedSource, manager: sourceManager.activeProvider)
+            switch sourceManager.selectedSource {
+            case .spotify:
+                MusicConnectionRow(source: .spotify, manager: MediaPlayerManager.shared)
+            case .appleMusic:
+                MusicConnectionRow(source: .appleMusic, manager: AppleMusicManager.shared)
+            }
         }
         .profileCard()
+        .animation(.easeInOut(duration: 0.2), value: sourceManager.selectedSource)
     }
 
     private var debugLogRow: some View {
@@ -146,10 +153,11 @@ private extension View {
 }
 
 /// Connection status row shared by both music sources — status icon/text, connect/disconnect
-/// button, and any error text.
-private struct MusicConnectionRow: View {
+/// button, and any error text. Generic over the concrete manager so Observation tracks
+/// `isConnected` (existentials erase that).
+private struct MusicConnectionRow<Manager: NowPlayingProviding>: View {
     let source: MusicSource
-    let manager: any NowPlayingProviding
+    let manager: Manager
 
     private var connectLabel: String {
         switch source {
@@ -158,14 +166,31 @@ private struct MusicConnectionRow: View {
         }
     }
 
+    private var statusText: String {
+        source.statusLabel(isConnected: manager.isConnected)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Image(systemName: manager.isConnected ? "music.note.list" : "music.note")
+            HStack(spacing: 10) {
+                Image(systemName: source.systemImage)
+                    .font(.body.weight(.semibold))
                     .foregroundStyle(manager.isConnected ? Color.kaidoViolet : .secondary)
-                Text(manager.isConnected ? "Connected" : "Not Connected")
-                    .lineLimit(1)
+                    .frame(width: 28, height: 28)
+                    .accessibilityHidden(true)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(source.title)
+                        .font(.subheadline.weight(.semibold))
+                    Text(manager.isConnected ? "Connected" : "Not Connected")
+                        .font(.caption)
+                        .foregroundStyle(manager.isConnected ? Color.kaidoViolet : .secondary)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(statusText)
+
                 Spacer()
+
                 if manager.isConnected {
                     Button("Disconnect", role: .destructive) {
                         manager.disconnect()

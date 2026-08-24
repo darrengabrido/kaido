@@ -21,17 +21,24 @@ struct KaidoApp: App {
                     MediaPlayerManager.shared.handleAuthCallback(url)
                     rideTogetherDeepLinkRouter.handle(url)
                 }
+                .task {
+                    // Populates the hidden MPVolumeView slider ahead of time so the first tap
+                    // of the Now Playing sheet's volume nudge isn't a no-op.
+                    SystemVolumeControl.warmUp()
+                }
         }
         .modelContainer(KaidoModelContainer.shared)
         .onChange(of: scenePhase) { _, phase in
-            // App Remote drops its connection in the background, so re-establish on return.
+            // App Remote drops in the background; keep the token and re-establish on return.
             switch phase {
             case .active:
                 MediaPlayerManager.shared.reconnectIfPossible()
                 AppleMusicManager.shared.refreshAuthorizationStatus()
                 Task { await rideTogetherSession.handleAppForeground() }
-            case .background: MediaPlayerManager.shared.disconnect()
-            default: break
+            case .background:
+                MediaPlayerManager.shared.suspendConnection()
+            default:
+                break
             }
         }
     }
