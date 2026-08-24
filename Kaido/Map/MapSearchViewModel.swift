@@ -21,6 +21,9 @@ final class MapSearchViewModel {
     var selectedOrigin: SearchResult?
     var activeTarget: SearchTarget = .destination
     var proximity: CLLocationCoordinate2D?
+    /// The proximity actually used for the most recent completed search — compared against the
+    /// live map center to decide whether "Search this area" should appear.
+    private(set) var lastSearchProximity: CLLocationCoordinate2D?
 
     private let geocodingService = GeocodingService()
     private var searchTask: Task<Void, Never>?
@@ -60,11 +63,22 @@ final class MapSearchViewModel {
             let found = try await geocodingService.search(query: query, proximity: proximity)
             guard !Task.isCancelled else { return }
             results = found
+            lastSearchProximity = proximity
         } catch {
             guard !Task.isCancelled else { return }
             searchError = error.localizedDescription
         }
         isSearching = false
+    }
+
+    /// Re-runs the current query around a new proximity — driven by the map's "Search this
+    /// area" button rather than typing, so it skips the debounce entirely.
+    func researchCurrentQuery(at coordinate: CLLocationCoordinate2D) {
+        proximity = coordinate
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        searchTask?.cancel()
+        searchTask = Task { await runSearch(query: trimmed) }
     }
 
     func selectResult(_ result: SearchResult) {

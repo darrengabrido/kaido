@@ -1,5 +1,6 @@
 import MapboxMaps
 import SwiftUI
+import CoreLocation
 
 /// The live Mapbox surface (puck, bike lanes, destination pin, route lines) as its own view.
 ///
@@ -14,8 +15,11 @@ struct KaidoMapCanvas: View {
     @Binding var viewport: Viewport
     let showBikeLanes: Bool
     let selectedDestination: SearchResult?
+    let searchResults: [SearchResult]
     let routeOptions: [RouteOption]
     let onSelectRoute: (RouteOption) -> Void
+    let onSelectSearchResult: (SearchResult) -> Void
+    let onCameraCenterChanged: (CLLocationCoordinate2D) -> Void
 
     var body: some View {
         Map(viewport: $viewport) {
@@ -57,6 +61,8 @@ struct KaidoMapCanvas: View {
             }
 
             RouteETABadgeAnnotations(routeOptions: routeOptions, onSelect: onSelectRoute)
+
+            SearchResultAnnotations(results: searchResults, onSelect: onSelectSearchResult)
         }
         .mapStyle(.kaidoNight)
         .ornamentOptions(OrnamentOptions(
@@ -68,6 +74,9 @@ struct KaidoMapCanvas: View {
                 margins: CGPoint(x: 16, y: 16)
             )
         ))
+        .onCameraChanged { change in
+            onCameraCenterChanged(change.cameraState.center)
+        }
         .ignoresSafeArea()
     }
 }
