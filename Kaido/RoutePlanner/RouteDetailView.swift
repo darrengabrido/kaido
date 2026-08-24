@@ -29,6 +29,11 @@ struct RouteDetailView: View {
     @State private var pendingRawInviteToken: String?
     @State private var isCreatingRideTogether = false
     @State private var rideTogetherErrorMessage: String?
+    @State private var isPresentingShareToCommunitySheet = false
+    @State private var isPresentingCommunityNamePrompt = false
+    @State private var isUpdatingCommunityShare = false
+    @State private var communityErrorMessage: String?
+    private let communityRouteService: CommunityRouteService = CompositeCommunityRouteService()
     /// Outer disclosure — chevron next to the duration reveals alternates + Route details.
     @State private var isRouteDetailsExpanded = false
     /// Nested under the expanded card — Steps + Hills live here so they aren't one long dump.
@@ -167,6 +172,23 @@ struct RouteDetailView: View {
                 onCancel: { isPresentingRideTogetherNamePrompt = false }
             )
         }
+        .sheet(isPresented: $isPresentingCommunityNamePrompt) {
+            GroupRideDisplayNamePromptView(
+                title: String(localized: "What should other riders see?"),
+                message: String(localized: "Shown as the author on any route you share to the community."),
+                onSubmit: { name in
+                    isPresentingCommunityNamePrompt = false
+                    GroupRideDisplayNameStore.current = name
+                    isPresentingShareToCommunitySheet = true
+                },
+                onCancel: { isPresentingCommunityNamePrompt = false }
+            )
+        }
+        .sheet(isPresented: $isPresentingShareToCommunitySheet) {
+            ShareRouteToCommunitySheet(route: route) { name, description in
+                try await publishToCommunity(name: name, description: description)
+            }
+        }
         .fullScreenCover(isPresented: $isPresentingNavigation) {
             if let navigationRoutes = navigationViewModel.navigationRoutes {
                 ZStack(alignment: .bottomTrailing) {
@@ -282,6 +304,8 @@ struct RouteDetailView: View {
                     route.isFavorite.toggle()
                 }
 
+                communityHeaderButton
+
                 routeHeaderButton(
                     systemImage: "xmark",
                     isSelected: false,
@@ -292,6 +316,36 @@ struct RouteDetailView: View {
             }
             .fixedSize(horizontal: true, vertical: false)
         }
+    }
+
+    /// Same visual language as `routeHeaderButton`, but swaps in a spinner while a publish/remove
+    /// request is in flight and toggles between the two community actions based on share state.
+    private var communityHeaderButton: some View {
+        Button {
+            if route.sharedCommunityRouteId != nil {
+                Task { await removeFromCommunity() }
+            } else {
+                startShareToCommunityFlow()
+            }
+        } label: {
+            Group {
+                if isUpdatingCommunityShare {
+                    ProgressView()
+                } else {
+                    Image(systemName: route.sharedCommunityRouteId != nil ? "person.2.slash" : "globe")
+                        .font(.system(size: 14, weight: .semibold))
+                }
+            }
+            .foregroundStyle(route.sharedCommunityRouteId != nil ? Color.kaidoVioletOnMap : Color.kaidoDim)
+            .frame(width: 34, height: 34)
+            .background(
+                route.sharedCommunityRouteId != nil ? Color.kaidoViolet.opacity(0.18) : Color.kaidoInk.opacity(0.07),
+                in: Circle()
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(isUpdatingCommunityShare || (route.sharedCommunityRouteId == nil && coordinates.count < 2))
+        .accessibilityLabel(route.sharedCommunityRouteId != nil ? "Remove from Community" : "Share to Community")
     }
 
     private func routeHeaderButton(
@@ -598,6 +652,11 @@ struct RouteDetailView: View {
     private var routeDetailsBody: some View {
         if let rideTogetherErrorMessage {
             Text(rideTogetherErrorMessage)
+                .font(.caption)
+                .foregroundStyle(Color.statusCritical)
+        }
+        if let communityErrorMessage {
+            Text(communityErrorMessage)
                 .font(.caption)
                 .foregroundStyle(Color.statusCritical)
         }
@@ -1003,5 +1062,43 @@ struct RouteDetailView: View {
 
     private var activeRideTimeProfile: RideTimeProfile {
         BikeProfileStore.activeProfile(in: bikeProfiles)?.rideTimeProfile ?? .defaultProfile
+    }
+
+    private func startShareToCommunityFlow() {
+        if GroupRideDisplayNameStore.current != nil {
+            isPresentingShareToCommunitySheet = true
+        } else {
+            isPresentingCommunityNamePrompt = true
+        }
+    }
+
+    private func publishToCommunity(name: String, description: String?) async throws {
+        let waypoints = route.orderedWaypoints.map {
+            CommunityRoute.Waypoint(latitude: $0.latitude, longitude: $0.longitude, order: $0.order)
+        }
+        let displayName = GroupRideDisplayNameStore.current ?? "Rider"
+        let published = try await communityRouteService.publish(
+            name: name,
+            description: description,
+            distanceMeters: route.distanceMeters,
+            elevationGainMeters: route.elevationGainMeters,
+            waypoints: waypoints,
+            displayName: displayName
+        )
+        GroupRideDisplayNameStore.current = displayName
+        route.sharedCommunityRouteId = published.id
+    }
+
+    private func removeFromCommunity() async {
+        guard let sharedCommunityRouteId = route.sharedCommunityRouteId else { return }
+        isUpdatingCommunityShare = true
+        communityErrorMessage = nil
+        do {
+            try await communityRouteService.remove(routeId: sharedCommunityRouteId)
+            route.sharedCommunityRouteId = nil
+        } catch {
+            communityErrorMessage = error.localizedDescription
+        }
+        isUpdatingCommunityShare = false
     }
 }
