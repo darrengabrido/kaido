@@ -31,6 +31,9 @@ final class MediaPlayerManager: NSObject {
         let configuration = SPTConfiguration(clientID: Self.clientID, redirectURL: Self.redirectURL)
         let remote = SPTAppRemote(configuration: configuration, logLevel: .debug)
         remote.delegate = self
+        // Restores a token saved before the app was last killed, so a relaunch doesn't force
+        // the user back through Spotify's OAuth screen.
+        remote.connectionParameters.accessToken = SpotifyTokenStore.loadValidToken()
         return remote
     }()
 
@@ -81,6 +84,7 @@ final class MediaPlayerManager: NSObject {
         if let token = parameters?[SPTAppRemoteAccessTokenKey] {
             DebugLog.shared.log("Auth succeeded, access token received (\(token.count) chars).", category: "Spotify")
             appRemote.connectionParameters.accessToken = token
+            SpotifyTokenStore.save(token: token)
             appRemote.connect()
         } else if let message = parameters?[SPTAppRemoteErrorDescriptionKey] {
             DebugLog.shared.log("Auth failed: \(message)", category: "Spotify")
@@ -139,12 +143,26 @@ extension MediaPlayerManager: SPTAppRemoteDelegate {
         DebugLog.shared.log("App Remote connection failed: \(error?.localizedDescription ?? "nil")", category: "Spotify")
         isConnected = false
         connectionError = error?.localizedDescription
+        // A real failure (as opposed to our own intentional disconnect, which reports nil here)
+        // means the stored token is invalid or expired — drop it so the next connect() falls
+        // through to authorizeAndPlayURI instead of retrying a dead token forever.
+        if error != nil {
+            discardStoredToken()
+        }
     }
 
     func appRemote(_ appRemote: SPTAppRemote, didDisconnectWithError error: Error?) {
         DebugLog.shared.log("App Remote disconnected: \(error?.localizedDescription ?? "nil")", category: "Spotify")
         isConnected = false
         connectionError = error?.localizedDescription
+        if error != nil {
+            discardStoredToken()
+        }
+    }
+
+    private func discardStoredToken() {
+        appRemote.connectionParameters.accessToken = nil
+        SpotifyTokenStore.clear()
     }
 }
 
