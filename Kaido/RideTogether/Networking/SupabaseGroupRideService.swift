@@ -425,6 +425,15 @@ final class SupabaseGroupRideService: GroupRideService, @unchecked Sendable {
 
     private static func mapError(_ error: Error) -> GroupRideServiceError {
         if let serviceError = error as? GroupRideServiceError { return serviceError }
+        // Catch response-parsing failures before the substring heuristics below see their raw,
+        // rider-unfriendly system message (e.g. "The data couldn't be read because it isn't in
+        // the correct format." for malformed/non-JSON bytes). The underlying error is logged
+        // since it's otherwise invisible without an attached debugger — see `DebugLogView`.
+        let nsError = error as NSError
+        if error is DecodingError || (nsError.domain == NSCocoaErrorDomain && nsError.code == 3840) {
+            DebugLog.shared.log("Response failed to decode: \(error)", category: "RideTogether")
+            return .decoding
+        }
         let message: String
         if let postgrestError = error as? PostgrestError {
             message = postgrestError.message
@@ -448,8 +457,11 @@ final class SupabaseGroupRideService: GroupRideService, @unchecked Sendable {
 
 /// Best-effort parser for Postgres's `timestamptz` JSON text representation, which includes
 /// fractional seconds and a `+HH:MM` offset (not `Z`) — outside what `JSONDecoder`'s built-in
-/// `.iso8601` strategy accepts. Also accepts the plain `Z`-suffixed form this app itself produces
-/// when round-tripping `GroupRideRouteSnapshot.capturedAt` through `wireEncoder`.
+/// `.iso8601` strategy accepts. Also accepts the offset-less `yyyy-MM-dd'T'HH:mm:ss.SSS` form
+/// that supabase-swift's own default `JSONEncoder` writes for a bare `Date` value embedded in an
+/// arbitrary JSON payload (e.g. `GroupRideRouteSnapshot.capturedAt`, encoded as part of the
+/// opaque `route_snapshot` jsonb blob rather than a real Postgres timestamptz column) — that
+/// encoder always renders in UTC despite omitting the offset, so it's treated as `Z` here.
 enum PostgresDate {
     private static let withFractionalSeconds: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
@@ -463,9 +475,18 @@ enum PostgresDate {
         return formatter
     }()
 
+    private static let withoutTimeZone: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSS"
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        return formatter
+    }()
+
     static func parse(_ string: String) -> Date? {
         if let date = withFractionalSeconds.date(from: string) { return date }
         if let date = withoutFractionalSeconds.date(from: string) { return date }
+        if let date = withoutTimeZone.date(from: string) { return date }
         // Postgres's `now()` almost always lands on 6-digit microsecond precision (trailing
         // zeros trimmed, so anywhere from 1 to 6 digits) — `ISO8601DateFormatter`'s
         // fractional-seconds mode only ever accepts exactly 3, so a real timestamptz value

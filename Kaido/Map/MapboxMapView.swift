@@ -1416,12 +1416,12 @@ struct MapboxMapView: View {
     /// (when there's only one route, so that extra toggle would be redundant).
     @ViewBuilder
     private var routeDetailsBody: some View {
+        rideTogetherButton
         if let rideTogetherErrorMessage {
             Text(rideTogetherErrorMessage)
                 .font(.caption)
                 .foregroundStyle(Color.statusCritical)
         }
-        rideTogetherButton
         Divider().opacity(0.35)
         hillsDetailRow
         routeStepsSection
