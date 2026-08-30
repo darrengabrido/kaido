@@ -25,6 +25,79 @@ enum RiderExperienceLevel: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
+enum RidePurpose: String, CaseIterable, Identifiable, Sendable {
+    case commute
+    case fitness
+    case leisure
+    case social
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .commute: "Commuting"
+        case .fitness: "Fitness"
+        case .leisure: "Leisure riding"
+        case .social: "Social rides"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .commute: "briefcase"
+        case .fitness: "figure.outdoor.cycle"
+        case .leisure: "leaf"
+        case .social: "person.2"
+        }
+    }
+}
+
+enum InterestTag: String, CaseIterable, Identifiable, Sendable {
+    case coffee
+    case natureParks
+    case food
+    case landmarksScenery
+    case nightlife
+    case familyFriendly
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .coffee: "Coffee"
+        case .natureParks: "Nature & parks"
+        case .food: "Food"
+        case .landmarksScenery: "Landmarks & scenery"
+        case .nightlife: "Nightlife"
+        case .familyFriendly: "Family-friendly"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .coffee: "cup.and.saucer"
+        case .natureParks: "tree"
+        case .food: "fork.knife"
+        case .landmarksScenery: "camera"
+        case .nightlife: "moon.stars"
+        case .familyFriendly: "figure.2.and.child.holdinghands"
+        }
+    }
+
+    /// Mapbox Search Box category slugs this tag pulls into discovery / biases toward.
+    /// `familyFriendly` has none — it's a tone-only cue for the AI prompt, not a fetchable category.
+    var poiCategories: [String] {
+        switch self {
+        case .coffee: ["coffee"]
+        case .natureParks: ["park"]
+        case .food: ["restaurant", "bakery"]
+        case .landmarksScenery: ["tourist_attraction"]
+        case .nightlife: ["bar"]
+        case .familyFriendly: []
+        }
+    }
+}
+
 /// The rider's personal identity, kept separate from authentication so guests can create a
 /// profile too. SwiftData's CloudKit configuration carries it to the rider's other devices.
 @Model
@@ -33,6 +106,10 @@ final class RiderProfile {
     var homeCity: String = ""
     var bio: String = ""
     var experienceLevelRaw: String = RiderExperienceLevel.recreational.rawValue
+    /// Nil until the rider states a purpose — unlike `experienceLevel`, there's no neutral
+    /// default that wouldn't silently bias AI stop curation for riders who never set this.
+    var ridePurposeRaw: String?
+    var interestTagsRaw: String = ""
     var createdAt: Date = Date()
     var updatedAt: Date = Date()
 
@@ -50,17 +127,31 @@ final class RiderProfile {
         displayName: String = "",
         homeCity: String = "",
         bio: String = "",
-        experienceLevel: RiderExperienceLevel = .recreational
+        experienceLevel: RiderExperienceLevel = .recreational,
+        ridePurpose: RidePurpose? = nil,
+        interestTags: [InterestTag] = []
     ) {
         self.displayName = displayName
         self.homeCity = homeCity
         self.bio = bio
         experienceLevelRaw = experienceLevel.rawValue
+        ridePurposeRaw = ridePurpose?.rawValue
+        interestTagsRaw = interestTags.map(\.rawValue).joined(separator: ",")
     }
 
     var experienceLevel: RiderExperienceLevel {
         get { RiderExperienceLevel(rawValue: experienceLevelRaw) ?? .recreational }
         set { experienceLevelRaw = newValue.rawValue }
+    }
+
+    var ridePurpose: RidePurpose? {
+        get { ridePurposeRaw.flatMap(RidePurpose.init(rawValue:)) }
+        set { ridePurposeRaw = newValue?.rawValue }
+    }
+
+    var interestTags: [InterestTag] {
+        get { interestTagsRaw.split(separator: ",").compactMap { InterestTag(rawValue: String($0)) } }
+        set { interestTagsRaw = newValue.map(\.rawValue).joined(separator: ",") }
     }
 }
 

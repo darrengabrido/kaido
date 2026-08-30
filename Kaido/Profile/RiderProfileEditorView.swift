@@ -14,6 +14,8 @@ struct RiderProfileEditorView: View {
     @State private var homeCity: String
     @State private var bio: String
     @State private var experienceLevel: RiderExperienceLevel
+    @State private var ridePurpose: RidePurpose?
+    @State private var selectedInterestTags: Set<InterestTag>
     @State private var photoImage: UIImage?
     @State private var photoChanged = false
     @State private var selectedPhotoItem: PhotosPickerItem?
@@ -33,75 +35,20 @@ struct RiderProfileEditorView: View {
         _homeCity = State(initialValue: profile.homeCity)
         _bio = State(initialValue: profile.bio)
         _experienceLevel = State(initialValue: profile.experienceLevel)
+        _ridePurpose = State(initialValue: profile.ridePurpose)
+        _selectedInterestTags = State(initialValue: Set(profile.interestTags))
         _photoImage = State(initialValue: profile.photoData.flatMap(UIImage.init(data:)))
     }
 
     var body: some View {
-        Form {
-            Section {
-                HStack {
-                    Spacer()
-                    photoPicker
-                    Spacer()
-                }
-                .listRowBackground(Color.clear)
-
-                if photoImage != nil {
-                    HStack {
-                        Spacer()
-                        Button("Remove Photo", role: .destructive) {
-                            photoImage = nil
-                            selectedPhotoItem = nil
-                            photoChanged = true
-                        }
-                        .font(.subheadline)
-                        Spacer()
-                    }
-                    .listRowBackground(Color.clear)
-                }
+        ScrollView {
+            LazyVStack(spacing: 16) {
+                youCard
+                ridingStyleCard
             }
-
-            Section("About you") {
-                TextField("Display name", text: $displayName)
-                    .textContentType(.name)
-                    .textInputAutocapitalization(.words)
-                    .onChange(of: displayName) { _, value in
-                        displayName = String(value.prefix(50))
-                    }
-
-                TextField("Home city", text: $homeCity)
-                    .textContentType(.addressCity)
-                    .textInputAutocapitalization(.words)
-                    .onChange(of: homeCity) { _, value in
-                        homeCity = String(value.prefix(80))
-                    }
-
-                TextField("A little about your riding", text: $bio, axis: .vertical)
-                    .lineLimit(3...6)
-                    .textInputAutocapitalization(.sentences)
-                    .onChange(of: bio) { _, value in
-                        bio = String(value.prefix(180))
-                    }
-
-                HStack {
-                    Spacer()
-                    Text("\(bio.count)/180")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            Section("Riding experience") {
-                Picker("Experience", selection: $experienceLevel) {
-                    ForEach(RiderExperienceLevel.allCases) { level in
-                        Label(level.title, systemImage: level.systemImage)
-                            .tag(level)
-                    }
-                }
-                .pickerStyle(.inline)
-                .labelsHidden()
-            }
+            .padding()
         }
+        .background(Color.kaidoMidnight)
         .navigationTitle(profile.displayName.isEmpty ? "Add Profile" : "Edit Profile")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -161,6 +108,139 @@ struct RiderProfileEditorView: View {
         }
     }
 
+    // MARK: - Cards
+
+    private var youCard: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Label("You", systemImage: "person.crop.circle")
+                .font(.headline)
+                .foregroundStyle(Color.kaidoInk)
+
+            VStack(spacing: 10) {
+                photoPicker
+                if photoImage != nil {
+                    Button("Remove Photo", role: .destructive) {
+                        photoImage = nil
+                        selectedPhotoItem = nil
+                        photoChanged = true
+                    }
+                    .font(.subheadline)
+                }
+            }
+            .frame(maxWidth: .infinity)
+
+            field("Display name") {
+                TextField("", text: $displayName)
+                    .textContentType(.name)
+                    .textInputAutocapitalization(.words)
+                    .onChange(of: displayName) { _, value in
+                        displayName = String(value.prefix(50))
+                    }
+            }
+
+            field("Home city") {
+                TextField("", text: $homeCity)
+                    .textContentType(.addressCity)
+                    .textInputAutocapitalization(.words)
+                    .onChange(of: homeCity) { _, value in
+                        homeCity = String(value.prefix(80))
+                    }
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                field("About your riding") {
+                    TextField("", text: $bio, axis: .vertical)
+                        .lineLimit(3...6)
+                        .textInputAutocapitalization(.sentences)
+                        .onChange(of: bio) { _, value in
+                            bio = String(value.prefix(180))
+                        }
+                }
+                HStack {
+                    Spacer()
+                    Text("\(bio.count)/180")
+                        .font(.caption2)
+                        .foregroundStyle(Color.kaidoDim)
+                }
+            }
+        }
+        .profileCard()
+    }
+
+    private var ridingStyleCard: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Label("Riding style", systemImage: "bicycle")
+                .font(.headline)
+                .foregroundStyle(Color.kaidoInk)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Experience")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(Color.kaidoDim)
+                FlowLayout(spacing: 8) {
+                    ForEach(RiderExperienceLevel.allCases) { level in
+                        SelectableChip(
+                            title: level.title,
+                            systemImage: level.systemImage,
+                            isSelected: experienceLevel == level
+                        ) {
+                            experienceLevel = level
+                        }
+                    }
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Ride purpose")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(Color.kaidoDim)
+                FlowLayout(spacing: 8) {
+                    SelectableChip(
+                        title: "Not set",
+                        systemImage: "circle.dashed",
+                        isSelected: ridePurpose == nil
+                    ) {
+                        ridePurpose = nil
+                    }
+                    ForEach(RidePurpose.allCases) { purpose in
+                        SelectableChip(
+                            title: purpose.title,
+                            systemImage: purpose.systemImage,
+                            isSelected: ridePurpose == purpose
+                        ) {
+                            ridePurpose = purpose
+                        }
+                    }
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("What are you into?")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(Color.kaidoDim)
+                FlowLayout(spacing: 8) {
+                    ForEach(InterestTag.allCases) { tag in
+                        SelectableChip(
+                            title: tag.title,
+                            systemImage: tag.systemImage,
+                            isSelected: selectedInterestTags.contains(tag)
+                        ) {
+                            if selectedInterestTags.contains(tag) {
+                                selectedInterestTags.remove(tag)
+                            } else {
+                                selectedInterestTags.insert(tag)
+                            }
+                        }
+                    }
+                }
+                Text("Helps tailor the stops Discover suggests during free rides.")
+                    .font(.caption2)
+                    .foregroundStyle(Color.kaidoDim)
+            }
+        }
+        .profileCard()
+    }
+
     private var photoPicker: some View {
         Button {
             if photoImage != nil {
@@ -197,6 +277,21 @@ struct RiderProfileEditorView: View {
         .photosPicker(isPresented: $isPresentingPhotoPicker, selection: $selectedPhotoItem, matching: .images)
     }
 
+    /// A labeled field container matching the app's capsule/card token set — outside `Form`,
+    /// text fields otherwise have no visual container of their own.
+    private func field(_ title: String, @ViewBuilder content: () -> some View) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(Color.kaidoDim)
+            content()
+                .foregroundStyle(Color.kaidoInk)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(Color.kaidoInk.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
+        }
+    }
+
     private var editBadge: some View {
         Image(systemName: "camera.fill")
             .font(.system(size: 12, weight: .semibold))
@@ -214,6 +309,8 @@ struct RiderProfileEditorView: View {
         profile.homeCity = homeCity.trimmingCharacters(in: .whitespacesAndNewlines)
         profile.bio = bio.trimmingCharacters(in: .whitespacesAndNewlines)
         profile.experienceLevel = experienceLevel
+        profile.ridePurpose = ridePurpose
+        profile.interestTags = InterestTag.allCases.filter { selectedInterestTags.contains($0) }
         if photoChanged {
             profile.photoData = photoImage?.jpegData(compressionQuality: Self.jpegQuality)
         }
@@ -245,6 +342,75 @@ struct RiderProfileEditorView: View {
 
         guard let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, thumbnailOptions) else { return nil }
         return UIImage(cgImage: thumbnail)
+    }
+}
+
+/// A single tappable pill used for both single-select (experience, ride purpose) and multi-select
+/// (interest tags) choices. Content-hugging by design — never `.frame(maxWidth: .infinity)` — so
+/// it always renders as a true capsule regardless of label length; wrap it in `FlowLayout` to let
+/// variable-width chips wrap onto new rows instead of stretching or clipping.
+private struct SelectableChip: View {
+    let title: String
+    let systemImage: String
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(isSelected ? .white : Color.kaidoInk)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(isSelected ? Color.kaidoViolet : Color.kaidoInk.opacity(0.1), in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+}
+
+/// Wraps content onto new rows instead of stretching or truncating it, for rows of
+/// variable-width, content-hugging chips (`SelectableChip`) where a fixed-column grid would
+/// distort labels of different lengths.
+private struct FlowLayout: Layout {
+    var spacing: CGFloat = 8
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? .infinity
+        var x: CGFloat = 0
+        var rowHeight: CGFloat = 0
+        var height: CGFloat = 0
+
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x + size.width > width, x > 0 {
+                height += rowHeight + spacing
+                x = 0
+                rowHeight = 0
+            }
+            x += size.width + (x > 0 ? spacing : 0)
+            rowHeight = max(rowHeight, size.height)
+        }
+
+        return CGSize(width: width, height: height + rowHeight)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x = bounds.minX
+        var y = bounds.minY
+        var rowHeight: CGFloat = 0
+
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x + size.width > bounds.maxX, x > bounds.minX {
+                x = bounds.minX
+                y += rowHeight + spacing
+                rowHeight = 0
+            }
+            subview.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+        }
     }
 }
 

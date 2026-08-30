@@ -138,10 +138,17 @@ struct ProfileView: View {
     }
 }
 
-private extension View {
+extension View {
+    /// The app's standard secondary card: glass material over a hairline violet stroke, lighter
+    /// than `RiderShowcaseCard`/`BikeShowcaseCard`'s hero-card stroke (0.2) so those stay the
+    /// visual high point of whatever screen they share with cards using this modifier.
     func profileCard() -> some View {
         padding(16)
             .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 20))
+            .overlay {
+                RoundedRectangle(cornerRadius: 20)
+                    .stroke(Color.kaidoViolet.opacity(0.12), lineWidth: 1)
+            }
     }
 }
 

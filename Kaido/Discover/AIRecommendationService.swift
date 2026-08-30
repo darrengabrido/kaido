@@ -23,17 +23,25 @@ struct AIRecommendationService {
     func curate(
         areaDescription: String,
         candidates: [SearchResult],
-        userCoordinate: CLLocationCoordinate2D
+        userCoordinate: CLLocationCoordinate2D,
+        ridePurpose: RidePurpose? = nil,
+        interestTags: [InterestTag] = []
     ) async throws -> [POIRecommendation] {
         if let apiKey = Self.apiKey, !apiKey.isEmpty {
             return try await curateWithOpenAI(
                 apiKey: apiKey,
                 areaDescription: areaDescription,
                 candidates: candidates,
-                userCoordinate: userCoordinate
+                userCoordinate: userCoordinate,
+                ridePurpose: ridePurpose,
+                interestTags: interestTags
             )
         }
-        return curateLocally(candidates: candidates, userCoordinate: userCoordinate)
+        return curateLocally(
+            candidates: candidates,
+            userCoordinate: userCoordinate,
+            interestTags: interestTags
+        )
     }
 
     var isAIEnabled: Bool {
@@ -47,7 +55,9 @@ struct AIRecommendationService {
         apiKey: String,
         areaDescription: String,
         candidates: [SearchResult],
-        userCoordinate: CLLocationCoordinate2D
+        userCoordinate: CLLocationCoordinate2D,
+        ridePurpose: RidePurpose?,
+        interestTags: [InterestTag]
     ) async throws -> [POIRecommendation] {
         let candidatePayload = candidates.map { candidate in
             let distance = userCoordinate.distance(to: candidate.coordinate)
@@ -60,6 +70,15 @@ struct AIRecommendationService {
             ] as [String: Any]
         }
 
+        let riderProfileLine = Self.riderProfileLine(ridePurpose: ridePurpose, interestTags: interestTags)
+        let userContent = [
+            "Area: \(areaDescription)",
+            riderProfileLine,
+            "Candidates: \(String(data: try JSONSerialization.data(withJSONObject: candidatePayload), encoding: .utf8) ?? "[]")"
+        ]
+        .compactMap { $0 }
+        .joined(separator: "\n")
+
         let payload: [String: Any] = [
             "model": Self.model,
             "temperature": 0.7,
@@ -71,16 +90,16 @@ struct AIRecommendationService {
                     You help cyclists discover interesting nearby stops during a casual free ride.
                     Pick 3–5 places from the candidate list only — never invent places.
                     Prefer variety (e.g. a park, a cafe, a viewpoint) and places within easy riding distance.
+                    If a rider profile line is present, let it bias which candidates you pick and the tone of \
+                    each blurb (e.g. quick and efficient for a commute, more exploratory for leisure) — but \
+                    keep the variety and distance guidance above as the primary criteria.
                     Each blurb is one short sentence (max 90 characters) explaining why it's worth a stop.
                     Return JSON: {"recommendations":[{"id":"...","blurb":"..."}]}
                     """
                 ],
                 [
                     "role": "user",
-                    "content": """
-                    Area: \(areaDescription)
-                    Candidates: \(String(data: try JSONSerialization.data(withJSONObject: candidatePayload), encoding: .utf8) ?? "[]")
-                    """
+                    "content": userContent
                 ]
             ]
         ]
@@ -115,14 +134,40 @@ struct AIRecommendationService {
         }
     }
 
+    /// One sentence summarizing whatever the rider has told us, for the OpenAI prompt.
+    /// Returns nil when the rider hasn't set anything, so the prompt stays unchanged for them.
+    private static func riderProfileLine(ridePurpose: RidePurpose?, interestTags: [InterestTag]) -> String? {
+        var parts: [String] = []
+        if let ridePurpose {
+            parts.append("this is a \(ridePurpose.rawValue) ride")
+        }
+        if !interestTags.isEmpty {
+            parts.append("interested in " + interestTags.map { $0.title.lowercased() }.joined(separator: ", "))
+        }
+        parts.append(
+            RoutingPreferenceStore.current == .quiet
+                ? "prefers calmer, low-stress stops"
+                : "doesn't mind busier stops if they're quick"
+        )
+        guard !parts.isEmpty else { return nil }
+        return "Rider profile: " + parts.joined(separator: "; ") + "."
+    }
+
     // MARK: - Local fallback
 
     private func curateLocally(
         candidates: [SearchResult],
-        userCoordinate: CLLocationCoordinate2D
+        userCoordinate: CLLocationCoordinate2D,
+        interestTags: [InterestTag]
     ) -> [POIRecommendation] {
+        let routingPreference = RoutingPreferenceStore.current
         let sorted = candidates
-            .sorted { userCoordinate.distance(to: $0.coordinate) < userCoordinate.distance(to: $1.coordinate) }
+            .sorted { lhs, rhs in
+                let lhsScore = Self.matchScore(for: lhs, interestTags: interestTags, routingPreference: routingPreference)
+                let rhsScore = Self.matchScore(for: rhs, interestTags: interestTags, routingPreference: routingPreference)
+                if lhsScore != rhsScore { return lhsScore > rhsScore }
+                return userCoordinate.distance(to: lhs.coordinate) < userCoordinate.distance(to: rhs.coordinate)
+            }
 
         var picks: [POIRecommendation] = []
         var usedCategories = Set<String>()
@@ -151,6 +196,28 @@ struct AIRecommendationService {
         }
 
         return picks
+    }
+
+    private static let calmCategories: Set<String> = ["coffee", "park", "bakery", "tourist_attraction"]
+    private static let busyCategories: Set<String> = ["bar"]
+
+    /// Higher score sorts first. +2 for matching a selected interest tag's POI category,
+    /// ±1 for calm/busy categories depending on the rider's quiet/fast routing preference.
+    private static func matchScore(
+        for candidate: SearchResult,
+        interestTags: [InterestTag],
+        routingPreference: RoutingPreference
+    ) -> Int {
+        let category = (candidate.category ?? "").lowercased()
+        var score = 0
+        if interestTags.contains(where: { $0.poiCategories.contains(category) }) {
+            score += 2
+        }
+        if routingPreference == .quiet {
+            if Self.calmCategories.contains(category) { score += 1 }
+            if Self.busyCategories.contains(category) { score -= 1 }
+        }
+        return score
     }
 
     private static func templateBlurb(for candidate: SearchResult) -> String {
