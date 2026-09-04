@@ -5,6 +5,13 @@ import UIKit
 /// Mirrors and drives the Spotify app's playback so the map screen can show a Now Playing bar
 /// without owning any audio itself. Connection is via Spotify's App Remote, which requires the
 /// Spotify app to be installed and a Premium account to accept transport commands.
+///
+/// App Remote's implicit `authorizeAndPlayURI` grant hands back a short-lived access token and
+/// no refresh token, so there is no way to renew silently from the device — a genuinely expired
+/// token always needs one more bounce through the Spotify app. What this class *can* do is stop
+/// treating every dropped socket as an expired token: App Remote also disconnects whenever iOS
+/// suspends the Spotify app (paused playback, memory pressure), and in that case the token is
+/// still perfectly good and a plain `connect()` brings the session back without any bounce.
 @Observable
 final class MediaPlayerManager: NSObject {
     /// Shared because the OAuth redirect arrives app-wide via `onOpenURL`, which has no way to
@@ -12,6 +19,9 @@ final class MediaPlayerManager: NSObject {
     static let shared = MediaPlayerManager()
 
     private static let redirectURL = URL(string: "kaido://spotify-callback")!
+
+    /// How long to wait after an unexpected disconnect before quietly trying to reconnect.
+    private static let reconnectDelay: TimeInterval = 2
 
     private static var clientID: String {
         Bundle.main.object(forInfoDictionaryKey: "SpotifyClientID") as? String ?? ""
@@ -25,6 +35,21 @@ final class MediaPlayerManager: NSObject {
     private(set) var connectionError: String?
 
     var hasNowPlayingItem: Bool { trackTitle != nil }
+
+    /// Set when a `connect()` using the stored token was refused. The token might be expired,
+    /// or Spotify might simply have been asleep — App Remote reports both the same way — so the
+    /// token is kept, but the next *user-initiated* connect goes through `authorizeAndPlayURI`
+    /// (which wakes Spotify and re-issues a token) instead of retrying `connect()` forever.
+    @ObservationIgnored
+    private var storedTokenWasRefused = false
+
+    /// True while we asked App Remote to disconnect ourselves (app going to background), so the
+    /// resulting delegate callback isn't mistaken for a dropped session.
+    @ObservationIgnored
+    private var isDisconnectingIntentionally = false
+
+    @ObservationIgnored
+    private var pendingReconnect: DispatchWorkItem?
 
     @ObservationIgnored
     private lazy var appRemote: SPTAppRemote = {
@@ -41,18 +66,26 @@ final class MediaPlayerManager: NSObject {
         super.init()
     }
 
-    /// Bounces out to the Spotify app to authorize; control returns via `handleAuthCallback`.
+    /// User-initiated connect. Reuses the stored token when we have one that hasn't been
+    /// refused; otherwise bounces out to the Spotify app to authorize, and control returns via
+    /// `handleAuthCallback`.
     func connect() {
         guard !appRemote.isConnected else { return }
+        pendingReconnect?.cancel()
         connectionError = nil
 
-        guard appRemote.connectionParameters.accessToken == nil else {
+        if appRemote.connectionParameters.accessToken != nil, !storedTokenWasRefused {
             DebugLog.shared.log("connect() reusing existing access token.", category: "Spotify")
             appRemote.connect()
             return
         }
 
-        DebugLog.shared.log("connect() starting authorizeAndPlayURI.", category: "Spotify")
+        DebugLog.shared.log(
+            storedTokenWasRefused
+                ? "connect() stored token was refused earlier; re-authorizing."
+                : "connect() starting authorizeAndPlayURI.",
+            category: "Spotify"
+        )
         appRemote.authorizeAndPlayURI("") { [weak self] success in
             DebugLog.shared.log("authorizeAndPlayURI callback: success=\(success)", category: "Spotify")
             guard !success else { return }
@@ -62,14 +95,20 @@ final class MediaPlayerManager: NSObject {
         }
     }
 
-    /// Resumes an existing session without bouncing to Spotify — safe to call on every foreground.
+    /// Resumes an existing session without bouncing to Spotify — safe to call on every
+    /// foreground. Silent by design: if it fails, the media bar just shows "Not Connected" and
+    /// the user's next tap on Connect takes the re-authorize path.
     func reconnectIfPossible() {
         guard !appRemote.isConnected, appRemote.connectionParameters.accessToken != nil else { return }
+        pendingReconnect?.cancel()
+        DebugLog.shared.log("reconnectIfPossible() trying stored token.", category: "Spotify")
         appRemote.connect()
     }
 
     func disconnect() {
+        pendingReconnect?.cancel()
         guard appRemote.isConnected else { return }
+        isDisconnectingIntentionally = true
         appRemote.disconnect()
     }
 
@@ -85,6 +124,7 @@ final class MediaPlayerManager: NSObject {
             DebugLog.shared.log("Auth succeeded, access token received (\(token.count) chars).", category: "Spotify")
             appRemote.connectionParameters.accessToken = token
             SpotifyTokenStore.save(token: token)
+            storedTokenWasRefused = false
             appRemote.connect()
         } else if let message = parameters?[SPTAppRemoteErrorDescriptionKey] {
             DebugLog.shared.log("Auth failed: \(message)", category: "Spotify")
@@ -123,13 +163,32 @@ final class MediaPlayerManager: NSObject {
             self?.artwork = image as? UIImage
         }
     }
+
+    /// One quiet retry after an unexpected drop. Spotify usually just got suspended; if it's
+    /// still reachable this restores the session with no UI at all, and if not, the failure
+    /// path leaves things in the same "Not Connected" state the user would have seen anyway.
+    private func scheduleReconnect() {
+        pendingReconnect?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, !self.appRemote.isConnected,
+                  self.appRemote.connectionParameters.accessToken != nil,
+                  UIApplication.shared.applicationState == .active
+            else { return }
+            DebugLog.shared.log("Retrying connection after unexpected disconnect.", category: "Spotify")
+            self.appRemote.connect()
+        }
+        pendingReconnect = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.reconnectDelay, execute: work)
+    }
 }
 
 extension MediaPlayerManager: SPTAppRemoteDelegate {
     func appRemoteDidEstablishConnection(_ appRemote: SPTAppRemote) {
         DebugLog.shared.log("App Remote connection established.", category: "Spotify")
+        pendingReconnect?.cancel()
         isConnected = true
         connectionError = nil
+        storedTokenWasRefused = false
 
         appRemote.playerAPI?.delegate = self
         appRemote.playerAPI?.subscribe(toPlayerState: nil)
@@ -143,26 +202,29 @@ extension MediaPlayerManager: SPTAppRemoteDelegate {
         DebugLog.shared.log("App Remote connection failed: \(error?.localizedDescription ?? "nil")", category: "Spotify")
         isConnected = false
         connectionError = error?.localizedDescription
-        // A real failure (as opposed to our own intentional disconnect, which reports nil here)
-        // means the stored token is invalid or expired — drop it so the next connect() falls
-        // through to authorizeAndPlayURI instead of retrying a dead token forever.
-        if error != nil {
-            discardStoredToken()
+        // Previously this threw the stored token away on any failure, which turned every
+        // "Spotify is asleep" into a forced OAuth bounce. Keep the token; just remember it was
+        // refused so the next user-initiated connect re-authorizes instead of retrying it.
+        if error != nil, appRemote.connectionParameters.accessToken != nil {
+            storedTokenWasRefused = true
         }
     }
 
     func appRemote(_ appRemote: SPTAppRemote, didDisconnectWithError error: Error?) {
-        DebugLog.shared.log("App Remote disconnected: \(error?.localizedDescription ?? "nil")", category: "Spotify")
+        DebugLog.shared.log(
+            "App Remote disconnected: \(error?.localizedDescription ?? "nil")"
+                + (isDisconnectingIntentionally ? " (intentional)" : ""),
+            category: "Spotify"
+        )
         isConnected = false
-        connectionError = error?.localizedDescription
-        if error != nil {
-            discardStoredToken()
-        }
-    }
 
-    private func discardStoredToken() {
-        appRemote.connectionParameters.accessToken = nil
-        SpotifyTokenStore.clear()
+        let wasIntentional = isDisconnectingIntentionally
+        isDisconnectingIntentionally = false
+        guard !wasIntentional, error != nil else { return }
+
+        // An unexpected drop mid-use: almost always Spotify being suspended by iOS rather than
+        // the token dying, so try once to pick the session back up before showing anything.
+        scheduleReconnect()
     }
 }
 
