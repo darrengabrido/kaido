@@ -161,7 +161,7 @@ final class CompanionSettingsStore {
 
     // MARK: - Bundle
 
-    static func bundledOpenAIKeyFromInfoPlist(bundle: Bundle = .main) -> String? {
+    nonisolated static func bundledOpenAIKeyFromInfoPlist(bundle: Bundle = .main) -> String? {
         guard let key = bundle.object(forInfoDictionaryKey: "OpenAIAPIKey") as? String else { return nil }
         let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
         // Secrets.xcconfig.example ships a placeholder; treat it as absent.
