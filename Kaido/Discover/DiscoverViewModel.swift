@@ -12,7 +12,7 @@ final class DiscoverViewModel {
     var isPanelExpanded = true
 
     private let geocodingService = GeocodingService()
-    private let aiService = AIRecommendationService()
+    private let companion = Companion.shared
     private var refreshTask: Task<Void, Never>?
 
     /// Where the last *finished* load looked (success or a clean "nothing nearby"/error result).
@@ -31,7 +31,7 @@ final class DiscoverViewModel {
     /// Suggestions are considered still fresh within this radius of where they were fetched.
     private static let refetchDistanceMeters: CLLocationDistance = 400
 
-    var isAIEnabled: Bool { aiService.isAIEnabled }
+    var isAIEnabled: Bool { companion.isAIEnabled }
 
     /// Only fetch suggestions when browsing the map with no active destination or route.
     ///
@@ -108,7 +108,7 @@ final class DiscoverViewModel {
                 return
             }
 
-            let curated = try await aiService.curate(
+            let curated = try await companion.curateStops(
                 areaDescription: area,
                 candidates: candidates,
                 userCoordinate: location.coordinate

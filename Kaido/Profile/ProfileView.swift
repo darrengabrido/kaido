@@ -6,6 +6,7 @@ struct ProfileView: View {
     @Environment(\.modelContext) private var modelContext
     @Query private var riderProfiles: [RiderProfile]
     private let sourceManager = MusicSourceManager.shared
+    private let companion = Companion.shared
 
     var body: some View {
         NavigationStack {
@@ -19,6 +20,7 @@ struct ProfileView: View {
                     }
 
                     accountCard
+                    companionCard
                     rideTogetherCard
                     musicCard
                     debugLogRow
@@ -57,6 +59,34 @@ struct ProfileView: View {
                     .tint(.kaidoViolet)
                 }
             }
+        }
+        .profileCard()
+    }
+
+    /// The companion's brain lives here: which provider, which model, whose key. Kept out of
+    /// the map so nobody is pasting API keys mid-ride.
+    private var companionCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Companion", systemImage: "sparkles")
+                .font(.headline)
+
+            NavigationLink {
+                CompanionSettingsView()
+            } label: {
+                HStack {
+                    Text("AI provider & key")
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            Text(companion.settings.statusDescription)
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
         .profileCard()
     }
