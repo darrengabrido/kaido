@@ -102,7 +102,22 @@ struct DiscoverPanelView: View {
                     .font(.caption)
                     .foregroundStyle(.red)
             }
+
+            if !viewModel.isAIEnabled {
+                fallbackFooter
+            }
         }
+    }
+
+    /// Says plainly which brain picked these, so an empty key never reads as a broken feature.
+    private var fallbackFooter: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "key")
+            Text("Using built-in picks. Add an AI key in Profile for smarter ones.")
+        }
+        .font(.caption2)
+        .foregroundStyle(.secondary)
+        .padding(.top, 6)
     }
 
     private func recommendationRow(_ recommendation: POIRecommendation) -> some View {
