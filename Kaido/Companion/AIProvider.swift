@@ -8,6 +8,7 @@ enum AIProvider: String, CaseIterable, Identifiable, Codable, Sendable {
     case anthropic
     case gemini
     case grok
+    case ollama
 
     var id: String { rawValue }
 
@@ -18,13 +19,14 @@ enum AIProvider: String, CaseIterable, Identifiable, Codable, Sendable {
         case .anthropic: "Anthropic"
         case .gemini: "Google Gemini"
         case .grok: "xAI Grok"
+        case .ollama: "Ollama"
         }
     }
 
     var systemImage: String {
         switch self {
         case .off: "binoculars"
-        case .openAI, .anthropic, .gemini, .grok: "sparkles"
+        case .openAI, .anthropic, .gemini, .grok, .ollama: "sparkles"
         }
     }
 
@@ -37,6 +39,7 @@ enum AIProvider: String, CaseIterable, Identifiable, Codable, Sendable {
         case .anthropic: ["claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5"]
         case .gemini: ["gemini-2.5-flash", "gemini-2.5-pro"]
         case .grok: ["grok-4", "grok-3-mini"]
+        case .ollama: ["llama3.2", "mistral", "qwen2.5", "llama3.1", "phi3"]
         }
     }
 
@@ -57,6 +60,8 @@ enum AIProvider: String, CaseIterable, Identifiable, Codable, Sendable {
             "Create a key at aistudio.google.com/apikey."
         case .grok:
             "Create a key at console.x.ai."
+        case .ollama:
+            "Runs locally or on your private network. API key is optional if using an authenticated proxy."
         }
     }
 
@@ -67,6 +72,25 @@ enum AIProvider: String, CaseIterable, Identifiable, Codable, Sendable {
         case .anthropic: "sk-ant-…"
         case .gemini: "AIza…"
         case .grok: "xai-…"
+        case .ollama: "Optional"
+        }
+    }
+
+    var defaultBaseURL: String {
+        switch self {
+        case .ollama: "http://localhost:11434"
+        default: ""
+        }
+    }
+
+    var requiresBaseURL: Bool {
+        self == .ollama
+    }
+
+    var requiresAPIKey: Bool {
+        switch self {
+        case .off, .ollama: false
+        case .openAI, .anthropic, .gemini, .grok: true
         }
     }
 }
