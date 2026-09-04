@@ -16,9 +16,19 @@ enum MapViewportFollow {
             .padding(.bottom, bottomPadding)
     }
 
-    static func recenter(_ viewport: Binding<Viewport>, bottomPadding: CGFloat = 24) {
+    /// Follow framing for a Free Ride camera mode. Same follow-puck behaviour, different
+    /// zoom and pitch.
+    static func live(camera: FreeRideCameraMode, bottomPadding: CGFloat = 24) -> Viewport {
+        live(zoom: camera.zoom, pitch: camera.pitch, bottomPadding: bottomPadding)
+    }
+
+    static func recenter(
+        _ viewport: Binding<Viewport>,
+        camera: FreeRideCameraMode = .overhead,
+        bottomPadding: CGFloat = 24
+    ) {
         withViewportAnimation(.default(maxDuration: 1.2)) {
-            viewport.wrappedValue = live(bottomPadding: bottomPadding)
+            viewport.wrappedValue = live(camera: camera, bottomPadding: bottomPadding)
         }
     }
 }

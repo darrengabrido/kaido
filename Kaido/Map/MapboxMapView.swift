@@ -21,6 +21,7 @@ struct MapboxMapView: View {
     @State private var viewport: Viewport = MapViewportFollow.live(bottomPadding: 420)
     @State private var showBikeLanes = true
     @State private var isFreeRideEnabled = false
+    @State private var freeRideCameraMode: FreeRideCameraMode = FreeRideCameraModeStore.current
     @State private var searchViewModel = MapSearchViewModel()
     @State private var discoverViewModel = DiscoverViewModel()
     @State private var navigationViewModel = NavigationViewModel()
@@ -84,6 +85,12 @@ struct MapboxMapView: View {
         viewport.followPuck != nil
     }
 
+    /// The camera mode only applies while Free Ride is on. Everywhere else the map keeps
+    /// its overhead framing so planning and navigation feel exactly as before.
+    private var followCamera: FreeRideCameraMode {
+        isFreeRideEnabled ? freeRideCameraMode : .overhead
+    }
+
     private var followBottomPadding: CGFloat {
         // Keep the puck above the drawer chrome with a little breathing room. Read from the
         // resting detent, not the live height, so recentring never fights an in-flight drag.
@@ -143,7 +150,7 @@ struct MapboxMapView: View {
             // Recenter sits above the cycling menu so riders can recover follow after a pan.
             VStack(spacing: 10) {
                 RecenterMapButton(isFollowing: isFollowingUser) {
-                    MapViewportFollow.recenter($viewport, bottomPadding: followBottomPadding)
+                    MapViewportFollow.recenter($viewport, camera: followCamera, bottomPadding: followBottomPadding)
                 }
 
                 Menu {
@@ -163,6 +170,16 @@ struct MapboxMapView: View {
                             "Free Ride",
                             systemImage: isFreeRideEnabled ? "checkmark.circle.fill" : "circle"
                         )
+                    }
+
+                    if isFreeRideEnabled {
+                        Picker("Camera", selection: $freeRideCameraMode) {
+                            ForEach(FreeRideCameraMode.allCases) { mode in
+                                Label(mode.title, systemImage: mode.systemImage)
+                                    .tag(mode)
+                            }
+                        }
+                        .pickerStyle(.inline)
                     }
                 } label: {
                     Image(systemName: "bicycle")
@@ -273,8 +290,12 @@ struct MapboxMapView: View {
         // the settled detent, so it fires once per resize rather than once per frame.
         .onChange(of: drawerModel.detent) { _, _ in
             if viewport.followPuck != nil {
-                viewport = MapViewportFollow.live(bottomPadding: followBottomPadding)
+                viewport = MapViewportFollow.live(camera: followCamera, bottomPadding: followBottomPadding)
             }
+        }
+        .onChange(of: freeRideCameraMode) { _, mode in
+            FreeRideCameraModeStore.current = mode
+            applyFollowCamera()
         }
         // Tapping the field expands and opens the keyboard. Dragging to full deliberately does
         // not focus — expansion and focus are separate intents.
@@ -1868,7 +1889,7 @@ struct MapboxMapView: View {
         navigationViewModel.clear()
         drawerModel.mediumTopFractionOverride = nil
         settleDrawer(to: .medium)
-        MapViewportFollow.recenter($viewport, bottomPadding: followBottomPadding)
+        MapViewportFollow.recenter($viewport, camera: followCamera, bottomPadding: followBottomPadding)
     }
 
     private func setFreeRideEnabled(_ enabled: Bool) {
@@ -1882,6 +1903,14 @@ struct MapboxMapView: View {
         } else {
             discoverViewModel.clear()
         }
+        applyFollowCamera()
+    }
+
+    /// Re-frames the follow camera for the current mode without stealing the map back from a
+    /// rider who has panned away; recenter still does that explicitly.
+    private func applyFollowCamera() {
+        guard viewport.followPuck != nil else { return }
+        MapViewportFollow.recenter($viewport, camera: followCamera, bottomPadding: followBottomPadding)
     }
 
     private func fetchRoutes(to destination: SearchResult) {
