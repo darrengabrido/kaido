@@ -44,6 +44,11 @@ struct ContentView: View {
                         Label("Profile", systemImage: "person.crop.circle")
                     }
                 }
+
+            SettingsView()
+                .tabItem {
+                    Label("Settings", systemImage: "gearshape")
+                }
         }
         .task {
             locationManager.requestWhenInUseAuthorization()

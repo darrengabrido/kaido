@@ -7,8 +7,8 @@ final class CompanionClientTests: XCTestCase {
         return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
     }
 
-    private func configuration(_ provider: AIProvider, model: String = "m", key: String = "k") -> CompanionConfiguration {
-        CompanionConfiguration(provider: provider, model: model, apiKey: key)
+    private func configuration(_ provider: AIProvider, model: String = "m", key: String = "k", baseURL: String? = nil) -> CompanionConfiguration {
+        CompanionConfiguration(provider: provider, model: model, apiKey: key, baseURL: baseURL)
     }
 
     // MARK: - Requests
@@ -33,6 +33,24 @@ final class CompanionClientTests: XCTestCase {
         XCTAssertEqual(request.url?.host, "api.x.ai")
         XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer xai-1")
         XCTAssertNotNil(try body(of: request)["response_format"])
+    }
+
+    func testOllamaRequestShapeWithDefaultsAndCustomHost() throws {
+        // Default host and no key
+        let defaultReq = try CompanionClient.request(
+            system: "sys", user: "usr", configuration: configuration(.ollama, model: "llama3.2", key: ""), temperature: 0.7
+        )
+        XCTAssertEqual(defaultReq.url?.absoluteString, "http://localhost:11434/v1/chat/completions")
+        XCTAssertNil(defaultReq.value(forHTTPHeaderField: "Authorization"))
+
+        // Custom host with trailing slash and optional auth key
+        let customReq = try CompanionClient.request(
+            system: "sys", user: "usr", configuration: configuration(.ollama, model: "mistral", key: "ollama-token", baseURL: "http://192.168.1.100:11434/"), temperature: 0.5
+        )
+        XCTAssertEqual(customReq.url?.absoluteString, "http://192.168.1.100:11434/v1/chat/completions")
+        XCTAssertEqual(customReq.value(forHTTPHeaderField: "Authorization"), "Bearer ollama-token")
+        let json = try body(of: customReq)
+        XCTAssertEqual(json["model"] as? String, "mistral")
     }
 
     func testAnthropicRequestShape() throws {
@@ -88,6 +106,7 @@ final class CompanionClientTests: XCTestCase {
         let data = Data(#"{"choices":[{"message":{"role":"assistant","content":"{\"ok\":true}"}}]}"#.utf8)
         XCTAssertEqual(try CompanionClient.extractText(from: data, provider: .openAI), #"{"ok":true}"#)
         XCTAssertEqual(try CompanionClient.extractText(from: data, provider: .grok), #"{"ok":true}"#)
+        XCTAssertEqual(try CompanionClient.extractText(from: data, provider: .ollama), #"{"ok":true}"#)
     }
 
     func testExtractsAnthropicTextBlocksAndSkipsThinking() throws {

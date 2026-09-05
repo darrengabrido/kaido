@@ -73,13 +73,28 @@ struct CompanionClient: Sendable {
         case .off:
             throw CompanionClientError.emptyResponse
 
-        case .openAI, .grok:
-            // Grok's API is OpenAI-compatible, so the two share a request shape.
-            let endpoint = configuration.provider == .openAI
-                ? "https://api.openai.com/v1/chat/completions"
-                : "https://api.x.ai/v1/chat/completions"
-            request = URLRequest(url: URL(string: endpoint)!)
-            request.setValue("Bearer \(configuration.apiKey)", forHTTPHeaderField: "Authorization")
+        case .openAI, .grok, .ollama:
+            let endpoint: String
+            switch configuration.provider {
+            case .openAI:
+                endpoint = "https://api.openai.com/v1/chat/completions"
+            case .grok:
+                endpoint = "https://api.x.ai/v1/chat/completions"
+            case .ollama:
+                let rawBase = configuration.baseURL?.trimmingCharacters(in: .whitespacesAndNewlines)
+                let base = (rawBase?.isEmpty == false ? rawBase! : "http://localhost:11434")
+                    .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+                endpoint = "\(base)/v1/chat/completions"
+            default:
+                endpoint = ""
+            }
+            guard let url = URL(string: endpoint) else {
+                throw CompanionClientError.emptyResponse
+            }
+            request = URLRequest(url: url)
+            if !configuration.apiKey.isEmpty {
+                request.setValue("Bearer \(configuration.apiKey)", forHTTPHeaderField: "Authorization")
+            }
             body = [
                 "model": configuration.model,
                 "temperature": temperature,
@@ -140,7 +155,7 @@ struct CompanionClient: Sendable {
         case .off:
             text = nil
 
-        case .openAI, .grok:
+        case .openAI, .grok, .ollama:
             let choices = json["choices"] as? [[String: Any]]
             let message = choices?.first?["message"] as? [String: Any]
             text = message?["content"] as? String

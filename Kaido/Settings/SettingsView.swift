@@ -1,64 +1,53 @@
 import SwiftUI
-import SwiftData
 
-struct ProfileView: View {
-    @Environment(AuthState.self) private var authState
-    @Environment(\.modelContext) private var modelContext
-    @Query private var riderProfiles: [RiderProfile]
+/// Top-level Settings tab: Configuration for AI companion, ride settings, music, and diagnostics.
+struct SettingsView: View {
+    private let companion = Companion.shared
     private let sourceManager = MusicSourceManager.shared
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 LazyVStack(spacing: 16) {
-                    if let profile = riderProfiles.first {
-                        RiderShowcaseCard(profile: profile)
-                    } else {
-                        ProgressView("Preparing your profile…")
-                            .frame(maxWidth: .infinity, minHeight: 140)
-                    }
-
-                    accountCard
+                    companionCard
                     rideTogetherCard
                     musicCard
                     debugLogRow
+                    aboutCard
                 }
                 .padding()
             }
             .background(Color.kaidoMidnight)
-            .navigationTitle("Profile")
-            .task {
-                RiderProfileStore.ensureProfile(in: modelContext)
-            }
+            .navigationTitle("Settings")
         }
     }
 
     // MARK: - Cards
 
-    private var accountCard: some View {
+    private var companionCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("Account", systemImage: "person.text.rectangle")
+            Label("Companion", systemImage: "sparkles")
                 .font(.headline)
 
-            HStack {
-                Image(systemName: authState.isAuthenticated ? "person.crop.circle.fill" : "person.crop.circle")
-                    .foregroundStyle(authState.isAuthenticated ? Color.kaidoViolet : .secondary)
-                Text(authState.user?.email ?? "Browsing as Guest")
-                    .lineLimit(1)
-                Spacer()
-                if authState.isAuthenticated {
-                    Button("Sign Out", role: .destructive) {
-                        Task { try? await authState.signOut() }
-                    }
-                } else {
-                    Button("Sign In") {
-                        authState.exitGuestMode()
-                    }
-                    .tint(.kaidoViolet)
+            NavigationLink {
+                CompanionSettingsView()
+            } label: {
+                HStack {
+                    Text("AI provider & key")
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
                 }
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+
+            Text(companion.settings.statusDescription)
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
-        .profileCard()
+        .settingsCard()
     }
 
     private var rideTogetherCard: some View {
@@ -84,11 +73,9 @@ struct ProfileView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
-        .profileCard()
+        .settingsCard()
     }
 
-    /// Lets you authorize the chosen source before setting off — the Now Playing bar itself only
-    /// appears during turn-by-turn, and connecting there would interrupt the ride.
     private var musicCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             Label("Music", systemImage: "waveform")
@@ -106,7 +93,7 @@ struct ProfileView: View {
 
             MusicConnectionRow(source: sourceManager.selectedSource, manager: sourceManager.activeProvider)
         }
-        .profileCard()
+        .settingsCard()
     }
 
     private var debugLogRow: some View {
@@ -134,19 +121,40 @@ struct ProfileView: View {
                 .font(.caption2)
                 .foregroundStyle(.secondary)
         }
-        .profileCard()
+        .settingsCard()
+    }
+
+    private var aboutCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("About", systemImage: "info.circle")
+                .font(.headline)
+
+            HStack {
+                Text("Version")
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text(appVersionString)
+                    .foregroundStyle(.primary)
+            }
+            .font(.subheadline)
+        }
+        .settingsCard()
+    }
+
+    private var appVersionString: String {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.1.0"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"
+        return "\(version) (\(build))"
     }
 }
 
 private extension View {
-    func profileCard() -> some View {
+    func settingsCard() -> some View {
         padding(16)
             .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 20))
     }
 }
 
-/// Connection status row shared by both music sources — status icon/text, connect/disconnect
-/// button, and any error text.
 private struct MusicConnectionRow: View {
     let source: MusicSource
     let manager: any NowPlayingProviding

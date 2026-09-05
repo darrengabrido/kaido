@@ -1,11 +1,12 @@
 import SwiftUI
 
-/// Bring-your-own-key settings for the companion. Reached from the Profile tab.
+/// Bring-your-own-key settings for the companion. Reached from the Settings tab.
 struct CompanionSettingsView: View {
     private let companion = Companion.shared
 
     @State private var keyDraft = ""
     @State private var modelDraft = ""
+    @State private var endpointDraft = ""
     @State private var testState: TestState = .idle
 
     private enum TestState: Equatable {
@@ -39,6 +40,9 @@ struct CompanionSettingsView: View {
             }
 
             if provider != .off {
+                if provider.requiresBaseURL {
+                    endpointSection
+                }
                 keySection
                 modelSection
                 testSection
@@ -50,6 +54,34 @@ struct CompanionSettingsView: View {
     }
 
     // MARK: - Sections
+
+    private var endpointSection: some View {
+        Section {
+            TextField(provider.defaultBaseURL, text: $endpointDraft)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .keyboardType(.URL)
+                .onSubmit(saveEndpoint)
+
+            HStack {
+                Button("Save endpoint", action: saveEndpoint)
+                    .disabled(endpointDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .tint(.kaidoViolet)
+                Spacer()
+                if settings.baseURL(for: provider) != provider.defaultBaseURL {
+                    Button("Reset default", role: .destructive) {
+                        settings.setBaseURL("", for: provider)
+                        endpointDraft = provider.defaultBaseURL
+                        testState = .idle
+                    }
+                }
+            }
+        } header: {
+            Text("\(provider.title) Endpoint")
+        } footer: {
+            Text("Local server address. Defaults to \(provider.defaultBaseURL) if left blank.")
+        }
+    }
 
     private var keySection: some View {
         Section {
@@ -125,7 +157,7 @@ struct CompanionSettingsView: View {
                     }
                 }
             }
-            .disabled(testState == .running || !settings.hasAPIKey(for: provider))
+            .disabled(testState == .running || settings.activeConfiguration == nil)
 
             if case .failed(let message) = testState {
                 Text(message)
@@ -156,6 +188,12 @@ struct CompanionSettingsView: View {
     private func loadDrafts() {
         keyDraft = ""
         modelDraft = ""
+        endpointDraft = settings.baseURL(for: provider)
+    }
+
+    private func saveEndpoint() {
+        settings.setBaseURL(endpointDraft, for: provider)
+        testState = .idle
     }
 
     private func saveKey() {
@@ -180,7 +218,8 @@ struct CompanionSettingsView: View {
 
     private func runTest() {
         guard let configuration = settings.activeConfiguration else {
-            testState = .failed("Save a key first.")
+            let message = provider.requiresAPIKey ? "Save a key first." : "Configure endpoint first."
+            testState = .failed(message)
             return
         }
         testState = .running

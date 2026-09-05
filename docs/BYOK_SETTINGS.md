@@ -1,25 +1,44 @@
-# BYOK Settings — Scope
+# BYOK Settings Screen — Scope
 
-**Status:** Approved Sept 4, 2026 (Darren, via voice)
-**Owner:** Fable
+**Status:** Approved by Darren, Sept 4 2026. Built & verified.
+**Branch:** `claude/notion-big-idea-page-40ncza`
 
-## Decision
-- Build a dedicated **Settings** tab (not Profile).
-- Full provider roster in v1: **Gemini, Grok, Anthropic, Ollama**, plus OpenAI and Off.
-- Apply to both: the BYOK settings screen itself, and Spotify group listening routed through the AI companion.
+## Decisions (locked)
 
-## What to build
-1. New Settings tab in the tab bar (or reachable from Profile → Settings).
-2. **AI** card: provider picker (full roster), secure API key field, **Test** button (fires one tiny request, shows check or error), model picker per provider with free-text override.
-3. Status line: "Free Ride is using {provider} · {model}" or "using built-in suggestions."
-4. Storage: key in Keychain (generalize the existing Spotify token store), provider + model in UserDefaults. Nothing syncs via CloudKit. Key never leaves the device except to its own provider.
-5. `AIRecommendationService`: user-configured key first, bundle key second, local fallback third.
-6. Spotify group listening: synced playback routed through the existing AI companion — no standalone sync.
+| Question | Answer |
+|---|---|
+| Providers in v1 | **All of them** — OpenAI, Anthropic, Gemini, Grok, Ollama, plus Off (local heuristics). Picker is a full list, not a binary. |
+| Home | A real **Settings** tab — not the Profile tab. Profile = identity; Settings = configuration. |
+| Timing | Built immediately alongside the Free Ride fix. |
+| Spotify group listening | Synced playback routed through the existing AI companion — no standalone sync. |
+
+## What it is
+
+A dedicated Settings tab containing:
+1. **Companion AI** card:
+   - Provider picker: OpenAI, Anthropic, Gemini, Grok, Ollama, Off.
+   - API key field, secure entry, with a **Test** button that fires one tiny request and shows check or error text.
+   - Base URL field for Ollama (defaults to `http://localhost:11434`), hidden for cloud providers.
+   - Model picker, populated per provider from a curated list with a free-text override.
+   - Status summary: "Active Brain: {provider} · {model}" or "Active Brain: Built-in rules".
+2. **Ride Together** quick replies configuration.
+3. **Music** connection status (Spotify / Apple Music).
+4. **Debug Log** and **About** version info.
+
+## Storage
+
+- Key → Keychain (`CompanionSettingsStore`).
+- Provider + model + baseURL → UserDefaults.
+- Nothing syncs via CloudKit. A pasted key never leaves the device except to its own provider.
+
+## How Free Ride uses it
+
+`AIRecommendationService` resolution order: user-configured key → bundle key → local fallback.
+Discover panel footer in fallback mode: "Using built-in picks. Add an AI key in Settings for smarter ones."
 
 ## Out of v1
-- Live model listing
-- Per-feature key overrides
-- Sharing the key to Supabase for other apps (Big Idea question, separate conversation)
 
-## Size estimate
-~400 lines, one PR, no schema or backend changes. Unit tests for the store and provider selection logic.
+- Live model listing from provider endpoints.
+- Per-feature key overrides.
+- Sharing the key to Supabase for other apps (Big Idea question — separate conversation).
+

@@ -6,6 +6,14 @@ struct CompanionConfiguration: Equatable, Sendable {
     let provider: AIProvider
     let model: String
     let apiKey: String
+    let baseURL: String?
+
+    init(provider: AIProvider, model: String, apiKey: String, baseURL: String? = nil) {
+        self.provider = provider
+        self.model = model
+        self.apiKey = apiKey
+        self.baseURL = baseURL
+    }
 }
 
 /// Which key the companion is actually running on. Surfaced in the UI so the rider is never
@@ -33,6 +41,9 @@ final class CompanionSettingsStore {
     private static func modelKey(for provider: AIProvider) -> String {
         "kaido.companion.model.\(provider.rawValue)"
     }
+    private static func endpointKey(for provider: AIProvider) -> String {
+        "kaido.companion.endpoint.\(provider.rawValue)"
+    }
 
     private let defaults: UserDefaults
     private let secrets: any SecretStore
@@ -43,6 +54,7 @@ final class CompanionSettingsStore {
     /// observe it; the store itself is the source of truth.
     private(set) var providersWithKeys: Set<AIProvider>
     private var models: [AIProvider: String]
+    private var endpoints: [AIProvider: String]
 
     init(
         defaults: UserDefaults = .standard,
@@ -60,6 +72,7 @@ final class CompanionSettingsStore {
 
         var models: [AIProvider: String] = [:]
         var withKeys = Set<AIProvider>()
+        var endpoints: [AIProvider: String] = [:]
         for candidate in AIProvider.allCases where candidate != .off {
             if let model = defaults.string(forKey: Self.modelKey(for: candidate)), !model.isEmpty {
                 models[candidate] = model
@@ -67,9 +80,13 @@ final class CompanionSettingsStore {
             if let key = secrets.read(account: candidate.rawValue), !key.isEmpty {
                 withKeys.insert(candidate)
             }
+            if let endpoint = defaults.string(forKey: Self.endpointKey(for: candidate)), !endpoint.isEmpty {
+                endpoints[candidate] = endpoint
+            }
         }
         self.models = models
         self.providersWithKeys = withKeys
+        self.endpoints = endpoints
     }
 
     // MARK: - Provider
@@ -93,6 +110,23 @@ final class CompanionSettingsStore {
         } else {
             models[provider] = trimmed
             defaults.set(trimmed, forKey: Self.modelKey(for: provider))
+        }
+    }
+
+    // MARK: - Base URL / Endpoint
+
+    func baseURL(for provider: AIProvider) -> String {
+        endpoints[provider] ?? provider.defaultBaseURL
+    }
+
+    func setBaseURL(_ url: String, for provider: AIProvider) {
+        let trimmed = url.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            endpoints[provider] = nil
+            defaults.removeObject(forKey: Self.endpointKey(for: provider))
+        } else {
+            endpoints[provider] = trimmed
+            defaults.set(trimmed, forKey: Self.endpointKey(for: provider))
         }
     }
 
@@ -127,6 +161,9 @@ final class CompanionSettingsStore {
     /// chosen provider is OpenAI), built-in rules last. `.off` always means built-in.
     var configurationSource: CompanionConfigurationSource {
         guard provider != .off else { return .builtIn }
+        if provider == .ollama {
+            return .riderKey(.ollama)
+        }
         if hasAPIKey(for: provider) { return .riderKey(provider) }
         if provider == .openAI, let bundled = bundledOpenAIKey, !bundled.isEmpty { return .bundledKey }
         return .builtIn
@@ -135,8 +172,15 @@ final class CompanionSettingsStore {
     var activeConfiguration: CompanionConfiguration? {
         switch configurationSource {
         case .riderKey(let provider):
-            guard let key = apiKey(for: provider) else { return nil }
-            return CompanionConfiguration(provider: provider, model: model(for: provider), apiKey: key)
+            let key = apiKey(for: provider) ?? ""
+            if provider.requiresAPIKey && key.isEmpty { return nil }
+            let base = provider.requiresBaseURL ? baseURL(for: provider) : nil
+            return CompanionConfiguration(
+                provider: provider,
+                model: model(for: provider),
+                apiKey: key,
+                baseURL: base
+            )
         case .bundledKey:
             guard let bundled = bundledOpenAIKey else { return nil }
             return CompanionConfiguration(provider: .openAI, model: model(for: .openAI), apiKey: bundled)
@@ -145,7 +189,7 @@ final class CompanionSettingsStore {
         }
     }
 
-    /// One line for the Profile card and the settings screen.
+    /// One line for the Settings card and the settings screen.
     var statusDescription: String {
         switch configurationSource {
         case .riderKey(let provider):

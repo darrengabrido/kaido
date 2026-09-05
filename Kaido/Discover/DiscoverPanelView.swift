@@ -113,7 +113,7 @@ struct DiscoverPanelView: View {
     private var fallbackFooter: some View {
         HStack(spacing: 6) {
             Image(systemName: "key")
-            Text("Using built-in picks. Add an AI key in Profile for smarter ones.")
+            Text("Using built-in picks. Add an AI key in Settings for smarter ones.")
         }
         .font(.caption2)
         .foregroundStyle(.secondary)

@@ -112,4 +112,37 @@ final class CompanionSettingsStoreTests: XCTestCase {
         // The test bundle has no OpenAIAPIKey at all, which must read as "no key".
         XCTAssertNil(CompanionSettingsStore.bundledOpenAIKeyFromInfoPlist(bundle: bundle))
     }
+
+    func testOllamaIsConfiguredByDefaultWithoutKey() {
+        let store = makeStore()
+        store.setProvider(.ollama)
+        XCTAssertEqual(store.configurationSource, .riderKey(.ollama))
+        XCTAssertEqual(
+            store.activeConfiguration,
+            CompanionConfiguration(
+                provider: .ollama,
+                model: AIProvider.ollama.defaultModel,
+                apiKey: "",
+                baseURL: "http://localhost:11434"
+            )
+        )
+        XCTAssertEqual(store.statusDescription, "Free Ride is using Ollama · \(AIProvider.ollama.defaultModel)")
+    }
+
+    func testOllamaCustomEndpointAndOptionalKeySurviveRelaunch() {
+        let secrets = InMemorySecretStore()
+        do {
+            let store = makeStore(secrets: secrets)
+            store.setProvider(.ollama)
+            store.setModel("mistral", for: .ollama)
+            store.setBaseURL("http://192.168.1.100:11434", for: .ollama)
+            store.setAPIKey("my-token", for: .ollama)
+        }
+        let relaunched = makeStore(secrets: secrets)
+        XCTAssertEqual(relaunched.provider, .ollama)
+        XCTAssertEqual(relaunched.model(for: .ollama), "mistral")
+        XCTAssertEqual(relaunched.baseURL(for: .ollama), "http://192.168.1.100:11434")
+        XCTAssertEqual(relaunched.activeConfiguration?.apiKey, "my-token")
+        XCTAssertEqual(relaunched.activeConfiguration?.baseURL, "http://192.168.1.100:11434")
+    }
 }
