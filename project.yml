@@ -54,6 +54,17 @@ targets:
         NSAppleMusicUsageDescription: "Kaido shows what's playing and lets you control playback from the map so you don't have to leave the app."
         NSMicrophoneUsageDescription: "Kaido uses the microphone so you can dictate a quick message to your Ride Together group."
         NSSpeechRecognitionUsageDescription: "Kaido uses speech recognition to turn your dictated Ride Together messages into text before you send them."
+        # The Companion's Ollama provider talks plain HTTP to a server on the rider's own
+        # network (their computer, not the phone — "localhost" from the phone's perspective is
+        # the phone itself). Two separate iOS restrictions block that without these:
+        # NSAllowsLocalNetworking lifts App Transport Security's TLS requirement for private-range
+        # LAN IPs and .local hostnames (it does NOT relax anything for the public internet), and
+        # NSLocalNetworkUsageDescription is the purpose string iOS requires before it will even
+        # show the "find and connect to devices on your local network" prompt — without it iOS
+        # silently drops the connection instead of prompting, which looks exactly like a hang.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        NSLocalNetworkUsageDescription: "Kaido connects to an Ollama server on your local network when you choose Ollama as your Companion AI provider."
         # Spotify's App Remote hands the access token back by opening this scheme.
         CFBundleURLTypes:
           - CFBundleURLName: com.oaktreehouse.kaido.spotify
